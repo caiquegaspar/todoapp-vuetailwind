@@ -1,6 +1,6 @@
 # ToDo App
 
-> Teste no framework Quasar com o layout de uma página de produto
+> Todo app test
 
 ### **Aplicação com:**
 
