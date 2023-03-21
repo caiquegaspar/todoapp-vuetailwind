@@ -1,59 +1,44 @@
 # ToDo App
 
-> Todo app test
+> This is an Progressive web app (PWA) for your to-do list, which includes adding, deleting, editing, and such features.
 
-### **Aplicação com:**
+### This application is made using Vue 3 Composition API in plain HTML5 and configured as PWA
 
-- item
-- item
+### **Application features:**
 
-\*_Projeto ainda sem responsividade._
+- add todo
+- delete todo
+- edit todo
+- flag todo (done/undone)
+- filter todo list (all/done/undone)
+- install as native app (PWA)
 
-## Resultado
+\*_Responsive project._
 
-**Acesse aqui [uma demo do projeto](https://google.com/)**
+## Results
 
-<code><img height="300" src="screenshot.png"></code>
-<code><img height="300" src="screenshot1.png"></code>
+**Access a demo of the project [here](https://vuetodo-app.pages.dev/)**
 
-## Conclusões sobre o projeto
+### Desktop view
 
-descrição
+<code><img height="400" src="assets/desktop_screenshot.png"></code>
 
-Pontos a destacar:
+### Mobile view
 
-1. item
-2. item
-3. item
+<code><img width="400" src="assets/mobile_screenshot.png"></code>
 
-outra descrição.
+## Next Steps
 
-# Instalação
+- [x] basic operations (add, delete, edit)
+- [x] filter list by tabs
+- [x] make app a PWA
+- [ ] develop drag and drop todos (to organize by priority)
+- [ ] publish to play store / app store
 
-## Install the dependencies
+# Installation
 
-```bash
-npm install
-```
-
-### Start the app in development mode (hot-code reloading, error reporting, etc.)
-
-```bash
-quasar dev
-```
-
-### Lint the files
+### To install `ToDo App` on your system, just enter the following command, enter the project folder and open "index.html" :
 
 ```bash
-npm run lint
+git clone https://github.com/caiquegaspar/todoapp-vuetailwind.git
 ```
-
-### Build the app for production
-
-```bash
-quasar build
-```
-
-### Customize the configuration
-
-See [Configuring quasar.conf.js](https://quasar.dev/quasar-cli/quasar-conf-js).
