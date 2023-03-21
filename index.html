@@ -94,12 +94,43 @@
     <div id="app"></div>
 
     <script>
-      const { createApp, ref } = Vue;
+      const { createApp, ref, computed } = Vue;
 
       const todosData = JSON.parse(localStorage.getItem("todos")) || [];
+      const staticNotifyProps = { msg: "", color: "", show: false };
+      const notifyCases = {
+        added: ["Task added!", "bg-green-500"],
+        empty: ["The task box cannot be empty", "bg-red-500"],
+        done: ["Task completed!", "bg-green-500"],
+        undone: ["Task is pending", "bg-yellow-500"],
+        removed: ["Task removed!", "bg-yellow-500"],
+        saved: ["Edit successfully", "bg-green-500"],
+      };
 
       const newTodo = ref("");
       const todos = ref(todosData);
+      const editMode = ref(false);
+      const targetTodo = ref(null);
+      const filterTerm = ref("all");
+      const tabPos = ref(0);
+      const notify = ref(false);
+      const notifyProps = ref(staticNotifyProps);
+      const notifyItems = ref([]);
+
+      const filteredTodos = () =>
+        todos.value.filter((todo) => filterRules(todo.done));
+
+      const filterRules = (val) => {
+        const rules = {
+          all: { show: val === true || val === false, pos: 0 },
+          done: { show: val === true, pos: 100 },
+          undone: { show: val === false, pos: 200 },
+        };
+
+        tabPos.value = rules[filterTerm.value].pos;
+
+        return rules[filterTerm.value].show;
+      };
 
       const addTodo = () => {
         if (newTodo.value) {
@@ -108,17 +139,77 @@
             content: newTodo.value,
           });
           newTodo.value = "";
-        }
 
-        saveData();
+          saveData("added");
+        } else {
+          saveData("empty");
+        }
       };
 
-      const doneTodo = (todo) => ((todo.done = !todo.done), saveData());
+      const doneTodo = (todo) => (
+        (todo.done = !todo.done), saveData(todo.done ? "done" : "undone")
+      );
 
-      const removeTodo = (index) => (todos.value.splice(index, 1), saveData());
+      const removeTodo = (idx) => (
+        todos.value.splice(idx, 1), saveData("removed")
+      );
 
-      const saveData = () =>
+      const setEditProps = (mode, target, val) => {
+        editMode.value = mode;
+        targetTodo.value = target;
+        newTodo.value = val;
+      };
+
+      const editTodo = (idx) => {
+        const target = todos.value.splice(idx, 1)[0];
+        setEditProps(true, target, target.content);
+      };
+
+      const saveTodo = () => {
+        targetTodo.value.content = newTodo.value;
+        todos.value.push(targetTodo.value);
+
+        saveData("saved");
+        setEditProps(false, null, "");
+      };
+
+      const saveData = (action) => {
         localStorage.setItem("todos", JSON.stringify(todos.value));
+
+        setNotifyProps(...notifyCases[action]);
+        showToast();
+      };
+
+      const setNotifyProps = (msg, color) => {
+        notifyProps.value.msg = msg;
+        notifyProps.value.color = color;
+      };
+
+      const showToast = () => (notify.value = true);
+
+      const setNotifyPos = (idx) => {
+        setTimeout(() => (notifyItems.value[idx].show = true), 50);
+        setTimeout(() => (notifyItems.value[idx].show = false), 5000);
+      };
+
+      const toastWatcher = {
+        modelValue(notifyVal) {
+          if (notifyVal) {
+            const notifyItem = {
+              msg: this.msg,
+              color: this.color,
+              show: this.show,
+            };
+
+            notifyItems.value.push(notifyItem);
+            notify.value = false;
+
+            const index = notifyItems.value.indexOf(notifyItem);
+
+            setNotifyPos(index);
+          }
+        },
+      };
 
       const appTemplate = /*html*/ `
         <main>
@@ -130,10 +221,14 @@
 
             <div class="header_tabs">
               <ul>
-                <li>All</li>
-                <li>Done</li>
-                <li>Undone</li>
+                <li @click="filterTerm = 'all'">All</li>
+                <li @click="filterTerm = 'done'">Done</li>
+                <li @click="filterTerm = 'undone'">Undone</li>
               </ul>
+
+              <div
+                :class="[ 'tabs_slider', 'translate-x-[' + tabPos + '%]' ]"
+              ></div>
             </div>
           </header>
 
@@ -143,35 +238,47 @@
               name="newTodo"
               autocomplete="off"
               placeholder="New ToDo"
-              @keyup.enter="addTodo"
+              @keyup.enter="!editMode ? addTodo : saveTodo"
             />
 
-            <button>Add</button>
+            <button v-if="!editMode" type="submit">Add</button>
+            <button v-else type="button" @click="saveTodo">Edit</button>
           </form>
 
           <div>
             <ul>
               <ToDoItem
-                v-for="(todo, index) in todos"
+                v-for="(todo, idx) in filteredTodos()"
                 :todo="todo"
-                :key="index"
+                :key="idx"
                 @doneTodo="doneTodo"
-                @removeTodo="removeTodo"
+                @removeTodo="removeTodo(idx)"
+                @editTodo="editTodo(idx)"
               />
             </ul>
           </div>
 
           <h4 class="empty_msg" v-if="!todos.length">Empty list.</h4>
+
+          <NotifyComponent v-model="notify" v-bind="notifyProps" />
         </main>
       `;
 
       const appConfig = {
         newTodo,
         todos,
+        editMode,
+        filterTerm,
+        tabPos,
+        notify,
+        notifyProps,
+        filteredTodos,
         addTodo,
+        saveTodo,
         saveData,
         doneTodo,
         removeTodo,
+        editTodo,
       };
 
       const toDoTemplate = /*html*/ `
@@ -187,10 +294,10 @@
           </span>
 
           <div class="todo_options">
-            <button @click="$emit('removeTodo', index)">
+            <button @click="$emit('removeTodo')">
               <DeleteIcon class="delete_icon" />
             </button>
-            <button @click="$emit('removeTodo', index)">
+            <button @click="$emit('editTodo')">
               <EditIcon class="edit_icon" />
             </button>
           </div>
@@ -251,10 +358,10 @@
       const editIcon = /*html*/ `
         <svg viewBox="0 0 24 24">
           <path
-            d="M12 3.99997H6C4.89543 3.99997 4 4.8954 4 5.99997V18C4 19.1045 4.89543 20 6 20H18C19.1046 
-            20 20 19.1045 20 18V12M18.4142 8.41417L19.5 7.32842C20.281 6.54737 20.281 5.28104 19.5 
-            4.5C18.7189 3.71895 17.4526 3.71895 16.6715 4.50001L15.5858 5.58575M18.4142 8.41417L12.3779 
-            14.4505C12.0987 14.7297 11.7431 14.9201 11.356 14.9975L8.41422 15.5858L9.00257 12.6441C9.08001 
+            d="M12 3.99997H6C4.89543 3.99997 4 4.8954 4 5.99997V18C4 19.1045 4.89543 20 6 20H18C19.1046
+            20 20 19.1045 20 18V12M18.4142 8.41417L19.5 7.32842C20.281 6.54737 20.281 5.28104 19.5
+            4.5C18.7189 3.71895 17.4526 3.71895 16.6715 4.50001L15.5858 5.58575M18.4142 8.41417L12.3779
+            14.4505C12.0987 14.7297 11.7431 14.9201 11.356 14.9975L8.41422 15.5858L9.00257 12.6441C9.08001
             12.2569 9.27032 11.9013 9.54951 11.6221L15.5858 5.58575M18.4142 8.41417L15.5858 5.58575"
             stroke="currentColor"
             stroke-width="2"
@@ -263,6 +370,54 @@
           />
         </svg>
       `;
+
+      const closeIcon = /*html*/ `
+        <svg viewBox="0 0 16 16" fill="none">
+          <path
+            d="M0.92524 0.687069C1.126 0.486219 1.39823 0.373377 1.68209 0.373377C1.96597
+                0.373377 2.2382 0.486219 2.43894 0.687069L8.10514 6.35813L13.7714 0.687069C13.8701
+                0.584748 13.9882 0.503105 14.1188 0.446962C14.2494 0.39082 14.3899 0.361248 14.5321
+                0.360026C14.6742 0.358783 14.8151 0.38589 14.9468 0.439762C15.0782 0.493633 15.1977
+                0.573197 15.2983 0.673783C15.3987 0.774389 15.4784 0.894026 15.5321 1.02568C15.5859
+                1.15736 15.6131 1.29845 15.6118 1.44071C15.6105 1.58297 15.5809 1.72357 15.5248
+                1.85428C15.4688 1.98499 15.3872 2.10324 15.2851 2.20206L9.61883 7.87312L15.2851
+                13.5441C15.4801 13.7462 15.588 14.0168 15.5854 14.2977C15.5831 14.5787 15.4705
+                14.8474 15.272 15.046C15.0735 15.2449 14.805 15.3574 14.5244 15.3599C14.2437 15.3623
+                13.9733 15.2543 13.7714 15.0591L8.10514 9.38812L2.43894 15.0591C2.23704 15.2543
+                1.96663 15.3623 1.68594 15.3599C1.40526 15.3574 1.13677 15.2449 0.938279 15.046C0.739807
+                14.8474 0.627232 14.5787 0.624791 14.2977C0.62235 14.0168 0.730236 13.7462 0.92524
+                13.5441L6.59144 7.87312L0.92524 2.20206C0.724562 2.00115 0.611816 1.72867 0.611816
+                1.44457C0.611816 1.16047 0.724562 0.887983 0.92524 0.687069Z"
+            fill="currentColor"
+          />
+        </svg>
+      `;
+
+      const notifyTemplate = /*html*/ `
+        <div class="notify_container">
+          <div
+            class="notify_toast"
+            role="alert"
+            v-for="(notify, idx) in notifyItems"
+            :key="notify.msg + idx"
+            :class="[notify.color, notify.show ? '-translate-x-[165%]' : 'translate-x-0']"
+          >
+            <div>
+              <span>{{ notify.msg }}</span>
+              <button
+                @click="notify.show = false"
+                type="button"
+                class="toast_close"
+              >
+                <span class="sr-only">Close</span>
+                <CloseIcon />
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
+
+      const notifyConfig = { setNotifyPos, notifyItems };
 
       const app = createApp({
         setup: () => appConfig,
@@ -277,6 +432,19 @@
       app.component("ToDoIcon", { template: toDoIcon });
       app.component("DeleteIcon", { template: deleteIcon });
       app.component("EditIcon", { template: editIcon });
+      app.component("CloseIcon", { template: closeIcon });
+
+      app.component("NotifyComponent", {
+        props: {
+          modelValue: Boolean,
+          msg: String,
+          color: String,
+          show: Boolean,
+        },
+        setup: () => notifyConfig,
+        template: notifyTemplate,
+        watch: toastWatcher,
+      });
 
       app.mount("#app");
     </script>
@@ -292,7 +460,7 @@
       }
 
       header {
-        @apply flex flex-row justify-between items-center;
+        @apply grid grid-cols-2 gap-4;
       }
 
       .header_title {
@@ -307,13 +475,21 @@
         @apply text-sm sm:text-2xl font-bold inline-block text-gray-400;
       }
 
+      .header_tabs {
+        @apply relative;
+      }
+
       .header_tabs ul {
-        @apply flex justify-between relative overflow-hidden after:block after:h-[40px] sm:after:h-[45px];
+        @apply grid grid-cols-3 relative overflow-hidden after:block after:h-[40px] sm:after:h-[45px];
         @apply after:bg-slate-900 after:absolute after:rounded-lg after:-z-10 after:transition-all;
       }
 
       .header_tabs li {
-        @apply py-2 px-4 sm:text-xl text-gray-400 cursor-pointer;
+        @apply py-2 px-4 sm:text-xl text-gray-400 cursor-pointer text-center z-20;
+      }
+
+      .tabs_slider {
+        @apply absolute top-0 left-0 w-1/3 h-full bg-slate-900 z-10 rounded-lg transition-transform duration-200 ease-linear;
       }
 
       .form_container {
@@ -355,6 +531,25 @@
 
       .empty_msg {
         @apply text-center m-0 text-gray-400;
+      }
+
+      .notify_container {
+        @apply fixed bottom-0 right-0 translate-x-[150%];
+      }
+
+      .notify_toast {
+        @apply max-w-xs w-80 mb-4 ml-4 mr-4 transition-transform duration-300 ease-in-out;
+        @apply text-sm text-white rounded-md shadow-lg;
+      }
+
+      .notify_toast > div {
+        @apply flex p-4;
+      }
+
+      .toast_close {
+        @apply inline-flex flex-shrink-0 justify-center items-center h-4 w-4 rounded-md text-white/[.5] ml-auto;
+        @apply hover:text-white focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-green-800;
+        @apply focus:ring-green-500 transition-all text-sm dark:focus:ring-offset-green-500 dark:focus:ring-green-700;
       }
     </style>
   </body>
