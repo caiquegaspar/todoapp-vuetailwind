@@ -88,10 +88,6 @@
 
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
-  </head>
-
-  <body>
-    <div id="app"></div>
 
     <script>
       if ("serviceWorker" in navigator) {
@@ -103,9 +99,23 @@
         });
       }
 
+      tailwind.config = {
+        darkMode: "class",
+      };
+    </script>
+  </head>
+
+  <body>
+    <div id="app"></div>
+
+    <script>
       const { createApp, ref, computed } = Vue;
 
       const todosData = JSON.parse(localStorage.getItem("todos")) || [];
+      const userTheme = localStorage.getItem("theme");
+      const systemTheme = window.matchMedia(
+        "(prefers-color-scheme: dark)"
+      ).matches;
       const staticNotifyProps = { msg: "", color: "", show: false };
       const notifyCases = {
         added: ["Task added!", "bg-green-500"],
@@ -115,6 +125,8 @@
         removed: ["Task removed!", "bg-yellow-500"],
         saved: ["Edit successfully", "bg-green-500"],
       };
+
+      const theme = computed(() => userTheme === "dark");
 
       const newTodo = ref("");
       const todos = ref(todosData);
@@ -201,6 +213,24 @@
         setTimeout(() => (notifyItems.value[idx].show = false), 5000);
       };
 
+      const themeCheck = (() => {
+        if (userTheme === "dark" || (!userTheme && systemTheme))
+          document.documentElement.classList.toggle("dark");
+      })();
+
+      const changeTheme = () => {
+        const documentClasses = document.documentElement.classList;
+
+        documentClasses.toggle("dark");
+
+        if (documentClasses.contains("dark")) {
+          localStorage.setItem("theme", "dark");
+          return;
+        }
+
+        localStorage.setItem("theme", "light");
+      };
+
       const toastWatcher = {
         modelValue(notifyVal) {
           if (notifyVal) {
@@ -270,6 +300,8 @@
           <h4 class="empty_msg" v-if="!todos.length">Empty list.</h4>
 
           <NotifyComponent v-model="notify" v-bind="notifyProps" />
+
+          <ThemeSwitcherComponent />
         </main>
       `;
 
@@ -283,11 +315,11 @@
         notifyProps,
         filteredTodos,
         addTodo,
-        saveTodo,
-        saveData,
         doneTodo,
         removeTodo,
         editTodo,
+        saveTodo,
+        saveData,
       };
 
       const toDoTemplate = /*html*/ `
@@ -402,6 +434,28 @@
         </svg>
       `;
 
+      const sunIcon = /*html*/ `
+        <svg fill="currentColor" viewBox="0 0 20 20">
+          <path
+            d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 
+                1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 
+                11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 
+                1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 
+                8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z"
+            fillRule="evenodd"
+            clipRule="evenodd"
+          />
+        </svg>
+      `;
+
+      const moonIcon = /*html*/ `
+        <svg fill="currentColor" viewBox="0 0 20 20">
+          <path
+            d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"
+          />
+        </svg>
+      `;
+
       const notifyTemplate = /*html*/ `
         <div class="notify_container">
           <div
@@ -428,6 +482,25 @@
 
       const notifyConfig = { setNotifyPos, notifyItems };
 
+      const themeSwitcherTemplate = /*html*/ `
+        <div class="theme_switcher_container">
+          <input
+            type="checkbox"
+            id="theme_switcher_checkbox"
+            @change="changeTheme"
+            :checked="theme"
+          />
+
+          <label for="theme_switcher_checkbox" class="theme_switcher_label">
+            <SunIcon />
+            <MoonIcon />
+            <div class="theme_switcher_ball"></div>
+          </label>
+        </div>
+      `;
+
+      const themeSwitcherConfig = { theme, changeTheme };
+
       const app = createApp({
         setup: () => appConfig,
         template: appTemplate,
@@ -442,6 +515,8 @@
       app.component("DeleteIcon", { template: deleteIcon });
       app.component("EditIcon", { template: editIcon });
       app.component("CloseIcon", { template: closeIcon });
+      app.component("SunIcon", { template: sunIcon });
+      app.component("MoonIcon", { template: moonIcon });
 
       app.component("NotifyComponent", {
         props: {
@@ -455,13 +530,18 @@
         watch: toastWatcher,
       });
 
+      app.component("ThemeSwitcherComponent", {
+        setup: () => themeSwitcherConfig,
+        template: themeSwitcherTemplate,
+      });
+
       app.mount("#app");
     </script>
 
     <style type="text/tailwindcss">
       body {
-        @apply bg-slate-800 text-white m-0 p-0 font-['Avenir_,_Helvetica_,_Arial_,sans_-_serif'];
-        @apply p-8 sm:p-16;
+        @apply bg-white dark:bg-slate-800 text-white font-['Avenir_,_Helvetica_,_Arial_,sans_-_serif'];
+        @apply p-8 pb-16 sm:p-16 transition duration-200 ease-linear;
       }
 
       main {
@@ -477,11 +557,11 @@
       }
 
       .header_title .todo_icon {
-        @apply w-[25px] sm:w-[35px];
+        @apply w-[25px] sm:w-[35px] fill-gray-600 dark:fill-gray-400;
       }
 
       .header_title h1 {
-        @apply text-sm sm:text-2xl font-bold inline-block text-gray-400;
+        @apply text-sm sm:text-2xl font-bold inline-block text-gray-600 dark:text-gray-400;
       }
 
       .header_tabs {
@@ -489,16 +569,16 @@
       }
 
       .header_tabs ul {
-        @apply grid grid-cols-3 relative overflow-hidden after:block after:h-[40px] sm:after:h-[45px];
-        @apply after:bg-slate-900 after:absolute after:rounded-lg after:-z-10 after:transition-all;
+        @apply grid grid-cols-3 relative overflow-hidden;
       }
 
       .header_tabs li {
-        @apply py-2 px-4 sm:text-xl text-gray-400 cursor-pointer text-center z-20;
+        @apply py-2 px-4 sm:text-xl text-gray-600 dark:text-gray-400 cursor-pointer text-center z-20;
       }
 
       .tabs_slider {
-        @apply absolute top-0 left-0 w-1/3 h-full bg-slate-900 z-10 rounded-lg transition-transform duration-200 ease-linear;
+        @apply absolute top-0 left-0 w-1/3 h-full bg-slate-300 dark:bg-slate-900 z-10 rounded-lg;
+        @apply z-10 rounded-lg transition-transform duration-200 ease-linear;
       }
 
       .form_container {
@@ -507,23 +587,22 @@
 
       .form_container input {
         @apply w-full basis-3/4 bg-transparent border-0 border-b-2 rounded-none p-3 focus:outline-none;
-        @apply border-b-slate-900 text-gray-400 placeholder:text-gray-400 shadow-2xl;
+        @apply border-b-slate-900 text-gray-600 dark:text-gray-400 placeholder:text-gray-600 dark:placeholder:text-gray-400 shadow-2xl;
       }
 
       .form_container button {
-        @apply ml-4 border-none p-4 px-6 shadow-2xl basis-1/4 bg-slate-900 text-gray-400 hover:text-gray-400;
+        @apply ml-4 border-none p-4 px-6 shadow-2xl basis-1/4 bg-slate-300 dark:bg-slate-900 text-gray-600 dark:text-gray-400;
         @apply uppercase rounded-lg select-none h-12 px-4 text-sm min-h-[3rem] font-semibold shrink-0;
       }
 
       .todo_item {
-        @apply w-full bg-slate-900 my-4 border-0 border-l-4 rounded-r-lg flex;
+        @apply w-full bg-slate-300 dark:bg-slate-900 my-4 border-0 border-l-4 rounded-r-lg flex;
         @apply justify-between items-center shadow-2xl;
       }
 
       .todo_item span {
-        @apply select-none cursor-pointer text-gray-400 overflow-hidden w-[80%] relative after:w-8;
-        @apply after:h-[1.5rem] after:bg-gradient-to-l after:from-slate-900 after:absolute after:block;
-        @apply after:right-0 after:top-0 h-12 flex items-center p-3;
+        @apply select-none cursor-pointer text-gray-600 dark:text-gray-400 overflow-hidden w-[80%] relative after:w-8;
+        @apply h-12 flex items-center p-3;
       }
 
       .todo_options {
@@ -559,6 +638,30 @@
         @apply inline-flex flex-shrink-0 justify-center items-center h-4 w-4 rounded-md text-white/[.5] ml-auto;
         @apply hover:text-white focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-green-800;
         @apply focus:ring-green-500 transition-all text-sm dark:focus:ring-offset-green-500 dark:focus:ring-green-700;
+      }
+
+      .theme_switcher_container {
+        @apply fixed bottom-5 left-6;
+      }
+
+      #theme_switcher_checkbox {
+        @apply opacity-0 absolute;
+      }
+
+      .theme_switcher_label {
+        @apply cursor-pointer w-[50px] h-[26px] bg-slate-500 dark:bg-slate-900 flex items-center justify-between rounded-xl;
+        @apply relative scale-150 p-1;
+      }
+
+      .theme_switcher_ball {
+        @apply cursor-pointer w-[20px] h-[20px] bg-white absolute top-[3.15px] left-[2px] rounded-full;
+        @apply transition-transform duration-200 ease-linear;
+      }
+
+      #theme_switcher_checkbox:checked
+        + .theme_switcher_label
+        .theme_switcher_ball {
+        @apply translate-x-[24px];
       }
     </style>
   </body>
