@@ -138,19 +138,24 @@
       const notifyProps = ref(staticNotifyProps);
       const notifyItems = ref([]);
 
+      const setTab = (str) => {
+        const rules = { all: 0, done: 100, undone: 200 };
+
+        filterTerm.value = str;
+        tabPos.value = rules[filterTerm.value];
+      };
+
       const filteredTodos = () =>
         todos.value.filter((todo) => filterRules(todo.done));
 
       const filterRules = (val) => {
         const rules = {
-          all: { show: val === true || val === false, pos: 0 },
-          done: { show: val === true, pos: 100 },
-          undone: { show: val === false, pos: 200 },
+          all: val === true || val === false,
+          done: val === true,
+          undone: val === false,
         };
 
-        tabPos.value = rules[filterTerm.value].pos;
-
-        return rules[filterTerm.value].show;
+        return rules[filterTerm.value];
       };
 
       const addTodo = () => {
@@ -260,9 +265,9 @@
 
             <div class="header_tabs">
               <ul>
-                <li @click="filterTerm = 'all'">All</li>
-                <li @click="filterTerm = 'done'">Done</li>
-                <li @click="filterTerm = 'undone'">Undone</li>
+                <li @click="setTab('all')">All</li>
+                <li @click="setTab('done')">Done</li>
+                <li @click="setTab('undone')">Undone</li>
               </ul>
 
               <div
@@ -313,6 +318,7 @@
         tabPos,
         notify,
         notifyProps,
+        setTab,
         filteredTodos,
         addTodo,
         doneTodo,
@@ -541,7 +547,7 @@
     <style type="text/tailwindcss">
       body {
         @apply bg-white dark:bg-slate-800 text-white font-['Avenir_,_Helvetica_,_Arial_,sans_-_serif'];
-        @apply p-8 pb-16 sm:p-16 transition duration-200 ease-linear;
+        @apply p-8 pb-16 sm:p-8 sm:pt-12 transition duration-200 ease-linear;
       }
 
       main {
@@ -549,7 +555,7 @@
       }
 
       header {
-        @apply grid grid-cols-2 gap-4;
+        @apply grid grid-cols-3 sm:grid-cols-2 gap-4;
       }
 
       .header_title {
@@ -565,7 +571,7 @@
       }
 
       .header_tabs {
-        @apply relative;
+        @apply relative col-span-2 sm:col-span-1;
       }
 
       .header_tabs ul {
@@ -654,14 +660,14 @@
       }
 
       .theme_switcher_ball {
-        @apply cursor-pointer w-[20px] h-[20px] bg-white absolute top-[3.15px] left-[2px] rounded-full;
+        @apply cursor-pointer w-[20px] h-[20px] bg-white absolute top-[3.15px] left-[4px] rounded-full;
         @apply transition-transform duration-200 ease-linear;
       }
 
       #theme_switcher_checkbox:checked
         + .theme_switcher_label
         .theme_switcher_ball {
-        @apply translate-x-[24px];
+        @apply translate-x-[22px];
       }
     </style>
   </body>
