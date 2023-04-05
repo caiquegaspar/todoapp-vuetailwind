@@ -87,7 +87,7 @@
     <meta name="theme-color" content="#ffffff" />
 
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://unpkg.com/vue@3.2.47/dist/vue.global.js"></script>
 
     <script>
       if ("serviceWorker" in navigator) {
@@ -111,6 +111,7 @@
     <script>
       const { createApp, ref, computed } = Vue;
 
+      const { search } = window.location;
       const todosData = JSON.parse(localStorage.getItem("todos")) || [];
       const userTheme = localStorage.getItem("theme");
       const systemTheme = window.matchMedia(
@@ -124,14 +125,21 @@
         undone: ["Task is pending", "bg-yellow-500"],
         removed: ["Task removed!", "bg-yellow-500"],
         saved: ["Edit successfully", "bg-green-500"],
+        copied: ["Content copied to clipboard", "bg-green-500"],
+        granted: ["Write access granted!", "bg-green-500"],
+        denied: ["Write access denied!", "bg-red-500"],
+        inserted: ["Successfully inserted", "bg-green-500"],
       };
 
       const theme = computed(() => userTheme === "dark");
+      const accessData = computed(() => search === "?access-data");
 
       const newTodo = ref("");
       const todos = ref(todosData);
       const editMode = ref(false);
       const targetTodo = ref(null);
+      const dataAccessTab = ref("");
+      const dataCode = ref("");
       const filterTerm = ref("all");
       const tabPos = ref(0);
       const notify = ref(false);
@@ -202,16 +210,77 @@
       const saveData = (action) => {
         localStorage.setItem("todos", JSON.stringify(todos.value));
 
-        setNotifyProps(...notifyCases[action]);
-        showToast();
+        showToast(...notifyCases[action]);
       };
 
-      const setNotifyProps = (msg, color) => {
+      const switchToInsertTab = () => {
+        dataCode.value = "";
+        dataAccessTab.value = "insertTab";
+      };
+
+      const insertData = () => {
+        if (!dataCode.value) {
+          showToast(...notifyCases.empty);
+
+          return;
+        }
+
+        try {
+          const base64 = dataCode.value.replace(/-/g, "+").replace(/_/g, "/");
+          const jsonPayload = JSON.parse(atob(base64));
+
+          localStorage.setItem("todos", JSON.stringify(jsonPayload));
+          showToast(...notifyCases.inserted);
+        } catch (err) {
+          showToast(err.message, "bg-red-500");
+        }
+      };
+
+      const getData = () => {
+        if (dataAccessTab.value === "getTab") return;
+
+        testClipboard();
+
+        dataCode.value = "";
+
+        const base64UrlEncode = (obj) =>
+          btoa(JSON.stringify(obj))
+            .replace(/\+/g, "-")
+            .replace(/\//g, "_")
+            .replace(/=/g, "");
+        const encodedData = base64UrlEncode(todos.value);
+
+        dataCode.value = todos.value.length ? encodedData : "";
+        dataAccessTab.value = "getTab";
+      };
+
+      const testClipboard = async () => {
+        const havePermission = await navigator.permissions.query({
+          name: "clipboard-write",
+        });
+        const { state } = havePermission;
+
+        if (state == "granted" || state == "prompt")
+          showToast(...notifyCases.granted);
+        else showToast(...notifyCases.denied);
+      };
+
+      const copyCode = async () => {
+        try {
+          await navigator.clipboard.writeText(dataCode.value);
+
+          showToast(...notifyCases.copied);
+        } catch (err) {
+          showToast("Failed to copy: " + err, "bg-red-500");
+        }
+      };
+
+      const showToast = (msg, color) => {
         notifyProps.value.msg = msg;
         notifyProps.value.color = color;
-      };
 
-      const showToast = () => (notify.value = true);
+        queueMicrotask(() => (notify.value = true));
+      };
 
       const setNotifyPos = (idx) => {
         setTimeout(() => (notifyItems.value[idx].show = true), 50);
@@ -263,7 +332,7 @@
               <h1>ToDo App</h1>
             </div>
 
-            <div class="header_tabs">
+            <div v-if="!accessData" class="header_tabs">
               <ul>
                 <li @click="setTab('all')">All</li>
                 <li @click="setTab('done')">Done</li>
@@ -276,7 +345,11 @@
             </div>
           </header>
 
-          <form class="form_container" @submit.prevent="addTodo">
+          <form
+            v-if="!accessData"
+            class="form_container"
+            @submit.prevent="addTodo"
+          >
             <input
               v-model="newTodo"
               name="newTodo"
@@ -289,20 +362,58 @@
             <button v-else type="button" @click="saveTodo">Edit</button>
           </form>
 
-          <div>
-            <ul>
-              <ToDoItem
-                v-for="(todo, idx) in filteredTodos()"
-                :todo="todo"
-                :key="idx"
-                @doneTodo="doneTodo"
-                @removeTodo="removeTodo(idx)"
-                @editTodo="editTodo(idx)"
-              />
-            </ul>
-          </div>
+          <form v-else class="data_access_form" @submit.prevent>
+            <div class="data_access_options">
+              <button type="button" @click="switchToInsertTab">
+                Insert Data
+              </button>
 
-          <h4 class="empty_msg" v-if="!todos.length">Empty list.</h4>
+              <h1>Or</h1>
+
+              <button type="button" @click="getData">Get Data</button>
+            </div>
+
+            <Transition name="fade" mode="out-in">
+              <div v-if="dataAccessTab === 'insertTab'" class="insert_data">
+                <input
+                  v-model="dataCode"
+                  name="insertData"
+                  autocomplete="off"
+                  placeholder="Insert Data"
+                  @keyup.enter="insertData"
+                />
+
+                <button type="button" @click="insertData">Insert</button>
+              </div>
+
+              <div v-else-if="dataAccessTab === 'getTab'" class="get_data">
+                <div class="code_input">
+                  <span class="code_str">{{ dataCode || "No data" }}</span>
+
+                  <button type="button" @click="copyCode" :disabled="!dataCode">
+                    <CopyIcon class="copy_icon" />
+                  </button>
+                </div>
+              </div>
+            </Transition>
+          </form>
+
+          <template v-if="!accessData">
+            <div>
+              <ul>
+                <ToDoItem
+                  v-for="(todo, idx) in filteredTodos()"
+                  :todo="todo"
+                  :key="idx"
+                  @doneTodo="doneTodo"
+                  @removeTodo="removeTodo(idx)"
+                  @editTodo="editTodo(idx)"
+                />
+              </ul>
+            </div>
+
+            <h4 class="empty_msg" v-if="!todos.length">Empty list.</h4>
+          </template>
 
           <NotifyComponent v-model="notify" v-bind="notifyProps" />
 
@@ -311,10 +422,12 @@
       `;
 
       const appConfig = {
+        dataAccessTab,
+        accessData,
         newTodo,
         todos,
         editMode,
-        filterTerm,
+        dataCode,
         tabPos,
         notify,
         notifyProps,
@@ -325,185 +438,212 @@
         removeTodo,
         editTodo,
         saveTodo,
-        saveData,
+        switchToInsertTab,
+        insertData,
+        getData,
+        copyCode,
       };
 
       const toDoTemplate = /*html*/ `
-        <li
-          class="todo_item"
-          :class="todo.done ? 'border-green-500' : 'border-red-500'"
-        >
-          <span
-            :class="{ 'line-through': todo.done }"
-            @click="$emit('doneTodo', todo)"
-          >
-            {{ todo.content }}
-          </span>
+            <li
+              class="todo_item"
+              :class="todo.done ? 'border-green-500' : 'border-red-500'"
+            >
+              <span
+                :class="{ 'line-through': todo.done }"
+                @click="$emit('doneTodo', todo)"
+              >
+                {{ todo.content }}
+              </span>
 
-          <div class="todo_options">
-            <button @click="$emit('removeTodo')">
-              <DeleteIcon class="delete_icon" />
-            </button>
-            <button @click="$emit('editTodo')">
-              <EditIcon class="edit_icon" />
-            </button>
-          </div>
-        </li>
-      `;
+              <div class="todo_options">
+                <button @click="$emit('removeTodo')">
+                  <DeleteIcon class="delete_icon" />
+                </button>
+                <button @click="$emit('editTodo')">
+                  <EditIcon class="edit_icon" />
+                </button>
+              </div>
+            </li>
+          `;
 
       const toDoIcon = /*html*/ `
-        <svg fill="#9ca3af" viewBox="0 0 24 24">
-          <path
-            d="M2,11H8a1,1,0,0,0,1-1V4A1,1,0,0,0,8,3H2A1,1,0,0,0,1,4v6A1,1,0,0,0,2,11ZM3,
-            5H7V9H3ZM23,7a1,1,0,0,1-1,1H12a1,1,0,0,1,0-2H22A1,1,0,0,1,23,7Zm0,10a1,1,0,0,1-1,
-            1H12a1,1,0,0,1,0-2H22A1,1,0,0,1,23,17ZM3.235,19.7,1.281,17.673a1,1,0,0,1,1.438-1.391l1.252,
-            1.3L7.3,14.289A1,1,0,1,1,8.7,15.711l-4.046,4a1,1,0,0,1-.7.289H3.942A1,1,0,0,1,3.235,19.7Z"
-          />
-        </svg>
-      `;
+            <svg fill="#9ca3af" viewBox="0 0 24 24">
+              <path
+                d="M2,11H8a1,1,0,0,0,1-1V4A1,1,0,0,0,8,3H2A1,1,0,0,0,1,4v6A1,1,0,0,0,2,11ZM3,
+                5H7V9H3ZM23,7a1,1,0,0,1-1,1H12a1,1,0,0,1,0-2H22A1,1,0,0,1,23,7Zm0,10a1,1,0,0,1-1,
+                1H12a1,1,0,0,1,0-2H22A1,1,0,0,1,23,17ZM3.235,19.7,1.281,17.673a1,1,0,0,1,1.438-1.391l1.252,
+                1.3L7.3,14.289A1,1,0,1,1,8.7,15.711l-4.046,4a1,1,0,0,1-.7.289H3.942A1,1,0,0,1,3.235,19.7Z"
+              />
+            </svg>
+          `;
+
+      const copyIcon = /*html*/ `
+            <svg viewBox="0 0 24 24">
+              <path
+                d="M19.53 8L14 2.47C13.8595 2.32931 13.6688 2.25018 13.47 2.25H11C10.2707
+                  2.25 9.57118 2.53973 9.05546 3.05546C8.53973 3.57118 8.25 4.27065 8.25
+                  5V6.25H7C6.27065 6.25 5.57118 6.53973 5.05546 7.05546C4.53973 7.57118 4.25
+                  8.27065 4.25 9V19C4.25 19.7293 4.53973 20.4288 5.05546 20.9445C5.57118 21.4603
+                  6.27065 21.75 7 21.75H14C14.7293 21.75 15.4288 21.4603 15.9445 20.9445C16.4603
+                  20.4288 16.75 19.7293 16.75 19V17.75H17C17.7293 17.75 18.4288 17.4603 18.9445
+                  16.9445C19.4603 16.4288 19.75 15.7293 19.75 15V8.5C19.7421 8.3116 19.6636 8.13309
+                  19.53 8ZM14.25 4.81L17.19 7.75H14.25V4.81ZM15.25 19C15.25 19.3315 15.1183 19.6495
+                  14.8839 19.8839C14.6495 20.1183 14.3315 20.25 14 20.25H7C6.66848 20.25 6.35054
+                  20.1183 6.11612 19.8839C5.8817 19.6495 5.75 19.3315 5.75 19V9C5.75 8.66848
+                  5.8817 8.35054 6.11612 8.11612C6.35054 7.8817 6.66848 7.75 7 7.75H8.25V15C8.25
+                  15.7293 8.53973 16.4288 9.05546 16.9445C9.57118 17.4603 10.2707 17.75 11
+                  17.75H15.25V19ZM17 16.25H11C10.6685 16.25 10.3505 16.1183 10.1161 15.8839C9.8817
+                  15.6495 9.75 15.3315 9.75 15V5C9.75 4.66848 9.8817 4.35054 10.1161 4.11612C10.3505
+                  3.8817 10.6685 3.75 11 3.75H12.75V8.5C12.7526 8.69811 12.8324 8.88737 12.9725
+                  9.02747C13.1126 9.16756 13.3019 9.24741 13.5 9.25H18.25V15C18.25 15.3315 18.1183
+                  15.6495 17.8839 15.8839C17.6495 16.1183 17.3315 16.25 17 16.25Z"
+              />
+            </svg>
+          `;
 
       const deleteIcon = /*html*/ `
-        <svg viewBox="0 0 24 24">
-          <path
-            d="M10 12V17"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          />
-          <path
-            d="M14 12V17"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          />
-          <path
-            d="M4 7H20"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          />
-          <path
-            d="M6 10V18C6 19.6569 7.34315 21 9 21H15C16.6569 21 18 19.6569 18 18V10"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          />
-          <path
-            d="M9 5C9 3.89543 9.89543 3 11 3H13C14.1046 3 15 3.89543 15 5V7H9V5Z"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          />
-        </svg>
-      `;
+            <svg viewBox="0 0 24 24">
+              <path
+                d="M10 12V17"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+              <path
+                d="M14 12V17"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+              <path
+                d="M4 7H20"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+              <path
+                d="M6 10V18C6 19.6569 7.34315 21 9 21H15C16.6569 21 18 19.6569 18 18V10"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+              <path
+                d="M9 5C9 3.89543 9.89543 3 11 3H13C14.1046 3 15 3.89543 15 5V7H9V5Z"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
+          `;
 
       const editIcon = /*html*/ `
-        <svg viewBox="0 0 24 24">
-          <path
-            d="M12 3.99997H6C4.89543 3.99997 4 4.8954 4 5.99997V18C4 19.1045 4.89543 20 6 20H18C19.1046
-            20 20 19.1045 20 18V12M18.4142 8.41417L19.5 7.32842C20.281 6.54737 20.281 5.28104 19.5
-            4.5C18.7189 3.71895 17.4526 3.71895 16.6715 4.50001L15.5858 5.58575M18.4142 8.41417L12.3779
-            14.4505C12.0987 14.7297 11.7431 14.9201 11.356 14.9975L8.41422 15.5858L9.00257 12.6441C9.08001
-            12.2569 9.27032 11.9013 9.54951 11.6221L15.5858 5.58575M18.4142 8.41417L15.5858 5.58575"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          />
-        </svg>
-      `;
+            <svg viewBox="0 0 24 24">
+              <path
+                d="M12 3.99997H6C4.89543 3.99997 4 4.8954 4 5.99997V18C4 19.1045 4.89543 20 6 20H18C19.1046
+                20 20 19.1045 20 18V12M18.4142 8.41417L19.5 7.32842C20.281 6.54737 20.281 5.28104 19.5
+                4.5C18.7189 3.71895 17.4526 3.71895 16.6715 4.50001L15.5858 5.58575M18.4142 8.41417L12.3779
+                14.4505C12.0987 14.7297 11.7431 14.9201 11.356 14.9975L8.41422 15.5858L9.00257 12.6441C9.08001
+                12.2569 9.27032 11.9013 9.54951 11.6221L15.5858 5.58575M18.4142 8.41417L15.5858 5.58575"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
+          `;
 
       const closeIcon = /*html*/ `
-        <svg viewBox="0 0 16 16" fill="none">
-          <path
-            d="M0.92524 0.687069C1.126 0.486219 1.39823 0.373377 1.68209 0.373377C1.96597
-                0.373377 2.2382 0.486219 2.43894 0.687069L8.10514 6.35813L13.7714 0.687069C13.8701
-                0.584748 13.9882 0.503105 14.1188 0.446962C14.2494 0.39082 14.3899 0.361248 14.5321
-                0.360026C14.6742 0.358783 14.8151 0.38589 14.9468 0.439762C15.0782 0.493633 15.1977
-                0.573197 15.2983 0.673783C15.3987 0.774389 15.4784 0.894026 15.5321 1.02568C15.5859
-                1.15736 15.6131 1.29845 15.6118 1.44071C15.6105 1.58297 15.5809 1.72357 15.5248
-                1.85428C15.4688 1.98499 15.3872 2.10324 15.2851 2.20206L9.61883 7.87312L15.2851
-                13.5441C15.4801 13.7462 15.588 14.0168 15.5854 14.2977C15.5831 14.5787 15.4705
-                14.8474 15.272 15.046C15.0735 15.2449 14.805 15.3574 14.5244 15.3599C14.2437 15.3623
-                13.9733 15.2543 13.7714 15.0591L8.10514 9.38812L2.43894 15.0591C2.23704 15.2543
-                1.96663 15.3623 1.68594 15.3599C1.40526 15.3574 1.13677 15.2449 0.938279 15.046C0.739807
-                14.8474 0.627232 14.5787 0.624791 14.2977C0.62235 14.0168 0.730236 13.7462 0.92524
-                13.5441L6.59144 7.87312L0.92524 2.20206C0.724562 2.00115 0.611816 1.72867 0.611816
-                1.44457C0.611816 1.16047 0.724562 0.887983 0.92524 0.687069Z"
-            fill="currentColor"
-          />
-        </svg>
-      `;
+            <svg viewBox="0 0 16 16" fill="none">
+              <path
+                d="M0.92524 0.687069C1.126 0.486219 1.39823 0.373377 1.68209 0.373377C1.96597
+                    0.373377 2.2382 0.486219 2.43894 0.687069L8.10514 6.35813L13.7714 0.687069C13.8701
+                    0.584748 13.9882 0.503105 14.1188 0.446962C14.2494 0.39082 14.3899 0.361248 14.5321
+                    0.360026C14.6742 0.358783 14.8151 0.38589 14.9468 0.439762C15.0782 0.493633 15.1977
+                    0.573197 15.2983 0.673783C15.3987 0.774389 15.4784 0.894026 15.5321 1.02568C15.5859
+                    1.15736 15.6131 1.29845 15.6118 1.44071C15.6105 1.58297 15.5809 1.72357 15.5248
+                    1.85428C15.4688 1.98499 15.3872 2.10324 15.2851 2.20206L9.61883 7.87312L15.2851
+                    13.5441C15.4801 13.7462 15.588 14.0168 15.5854 14.2977C15.5831 14.5787 15.4705
+                    14.8474 15.272 15.046C15.0735 15.2449 14.805 15.3574 14.5244 15.3599C14.2437 15.3623
+                    13.9733 15.2543 13.7714 15.0591L8.10514 9.38812L2.43894 15.0591C2.23704 15.2543
+                    1.96663 15.3623 1.68594 15.3599C1.40526 15.3574 1.13677 15.2449 0.938279 15.046C0.739807
+                    14.8474 0.627232 14.5787 0.624791 14.2977C0.62235 14.0168 0.730236 13.7462 0.92524
+                    13.5441L6.59144 7.87312L0.92524 2.20206C0.724562 2.00115 0.611816 1.72867 0.611816
+                    1.44457C0.611816 1.16047 0.724562 0.887983 0.92524 0.687069Z"
+                fill="currentColor"
+              />
+            </svg>
+          `;
 
       const sunIcon = /*html*/ `
-        <svg fill="currentColor" viewBox="0 0 20 20">
-          <path
-            d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 
-                1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 
-                11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 
-                1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 
-                8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z"
-            fillRule="evenodd"
-            clipRule="evenodd"
-          />
-        </svg>
-      `;
+            <svg fill="currentColor" viewBox="0 0 20 20">
+              <path
+                d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1
+                    1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0
+                    11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1
+                    1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414
+                    8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z"
+                fillRule="evenodd"
+                clipRule="evenodd"
+              />
+            </svg>
+          `;
 
       const moonIcon = /*html*/ `
-        <svg fill="currentColor" viewBox="0 0 20 20">
-          <path
-            d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"
-          />
-        </svg>
-      `;
+            <svg fill="currentColor" viewBox="0 0 20 20">
+              <path
+                d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"
+              />
+            </svg>
+          `;
 
       const notifyTemplate = /*html*/ `
-        <div class="notify_container">
-          <div
-            class="notify_toast"
-            role="alert"
-            v-for="(notify, idx) in notifyItems"
-            :key="notify.msg + idx"
-            :class="[notify.color, notify.show ? '-translate-x-[165%]' : 'translate-x-0']"
-          >
-            <div>
-              <span>{{ notify.msg }}</span>
-              <button
-                @click="notify.show = false"
-                type="button"
-                class="toast_close"
+            <div class="notify_container">
+              <div
+                class="notify_toast"
+                role="alert"
+                v-for="(notify, idx) in notifyItems"
+                :key="notify.msg + idx"
+                :class="[notify.color, notify.show ? '-translate-x-[165%]' : 'translate-x-0']"
               >
-                <span class="sr-only">Close</span>
-                <CloseIcon />
-              </button>
+                <div>
+                  <span>{{ notify.msg }}</span>
+                  <button
+                    @click="notify.show = false"
+                    type="button"
+                    class="toast_close"
+                  >
+                    <span class="sr-only">Close</span>
+                    <CloseIcon />
+                  </button>
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
-      `;
+          `;
 
       const notifyConfig = { setNotifyPos, notifyItems };
 
       const themeSwitcherTemplate = /*html*/ `
-        <div class="theme_switcher_container">
-          <input
-            type="checkbox"
-            id="theme_switcher_checkbox"
-            @change="changeTheme"
-            :checked="theme"
-          />
+            <div class="theme_switcher_container">
+              <input
+                type="checkbox"
+                id="theme_switcher_checkbox"
+                @change="changeTheme"
+                :checked="theme"
+              />
 
-          <label for="theme_switcher_checkbox" class="theme_switcher_label">
-            <SunIcon />
-            <MoonIcon />
-            <div class="theme_switcher_ball"></div>
-          </label>
-        </div>
-      `;
+              <label for="theme_switcher_checkbox" class="theme_switcher_label">
+                <SunIcon />
+                <MoonIcon />
+                <div class="theme_switcher_ball"></div>
+              </label>
+            </div>
+          `;
 
       const themeSwitcherConfig = { theme, changeTheme };
 
@@ -518,6 +658,7 @@
       });
 
       app.component("ToDoIcon", { template: toDoIcon });
+      app.component("CopyIcon", { template: copyIcon });
       app.component("DeleteIcon", { template: deleteIcon });
       app.component("EditIcon", { template: editIcon });
       app.component("CloseIcon", { template: closeIcon });
@@ -545,6 +686,17 @@
     </script>
 
     <style type="text/tailwindcss">
+      /* Fade animation */
+      .fade-enter-active,
+      .fade-leave-active {
+        @apply transition-opacity duration-300;
+      }
+
+      .fade-enter-from,
+      .fade-leave-to {
+        @apply opacity-0;
+      }
+
       body {
         @apply bg-white dark:bg-slate-800 text-white font-['Avenir_,_Helvetica_,_Arial_,sans_-_serif'];
         @apply p-8 pb-16 sm:p-8 sm:pt-12 transition duration-200 ease-linear;
@@ -564,6 +716,10 @@
 
       .header_title .todo_icon {
         @apply w-[25px] sm:w-[35px] fill-gray-600 dark:fill-gray-400;
+      }
+
+      .copy_icon {
+        @apply w-[25px] sm:w-[30px] fill-gray-600 dark:fill-gray-400;
       }
 
       .header_title h1 {
@@ -588,7 +744,7 @@
       }
 
       .form_container {
-        @apply flex py-5 px-4 justify-center gap-3;
+        @apply flex py-5 px-4 justify-center gap-4;
       }
 
       .form_container input {
@@ -597,8 +753,49 @@
       }
 
       .form_container button {
-        @apply ml-4 border-none p-4 px-6 shadow-2xl basis-1/4 bg-slate-300 dark:bg-slate-900 text-gray-600 dark:text-gray-400;
+        @apply border-none p-4 px-6 shadow-2xl basis-1/4 bg-slate-300 dark:bg-slate-900 text-gray-600 dark:text-gray-400;
         @apply uppercase rounded-lg select-none h-12 px-4 text-sm min-h-[3rem] font-semibold shrink-0;
+        @apply disabled:cursor-not-allowed disabled:bg-slate-200 dark:disabled:bg-slate-700;
+      }
+
+      .data_access_form {
+        @apply flex py-5 px-4 justify-center gap-3 flex-col items-center text-center;
+      }
+
+      .data_access_form input {
+        @apply w-full bg-transparent border-0 border-b-2 rounded-none p-3 focus:outline-none;
+        @apply border-b-slate-900 text-gray-600 dark:text-gray-400 placeholder:text-gray-600 dark:placeholder:text-gray-400 shadow-2xl;
+      }
+
+      .data_access_form button {
+        @apply border-none p-4 px-6 shadow-2xl bg-slate-300 dark:bg-slate-900 text-gray-600 dark:text-gray-400;
+        @apply uppercase rounded-lg select-none h-12 px-4 text-sm min-h-[3rem] font-semibold shrink-0 flex items-center;
+        @apply disabled:cursor-not-allowed disabled:bg-slate-200 dark:disabled:bg-slate-700;
+      }
+
+      .data_access_options {
+        @apply flex items-center p-5 gap-8;
+      }
+
+      .insert_data {
+        @apply flex flex-row w-full gap-4 px-3 py-2;
+      }
+
+      .data_access_options > h1 {
+        @apply text-sm sm:text-xl font-bold inline-block text-gray-600 dark:text-gray-400;
+      }
+
+      .get_data {
+        @apply flex flex-col items-center gap-4 w-full;
+      }
+
+      .code_input {
+        @apply w-full bg-transparent border-0 border-b-2 rounded-none px-3 py-2 focus:outline-none flex flex-row justify-between items-center;
+        @apply border-b-slate-900 text-gray-600 dark:text-gray-400 placeholder:text-gray-600 dark:placeholder:text-gray-400 shadow-2xl gap-4;
+      }
+
+      .code_str {
+        @apply truncate;
       }
 
       .todo_item {
