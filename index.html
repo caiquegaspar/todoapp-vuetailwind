@@ -134,6 +134,7 @@
       const theme = computed(() => userTheme === "dark");
       const accessData = computed(() => search === "?access-data");
 
+      const isLoggedIn = ref(false);
       const newTodo = ref("");
       const todos = ref(todosData);
       const editMode = ref(false);
@@ -145,6 +146,7 @@
       const notify = ref(false);
       const notifyProps = ref(staticNotifyProps);
       const notifyItems = ref([]);
+      const showPass = ref(false);
 
       const setTab = (str) => {
         const rules = { all: 0, done: 100, undone: 200 };
@@ -326,93 +328,101 @@
 
       const appTemplate = /*html*/ `
         <main>
-          <header>
-            <div class="header_title">
-              <ToDoIcon class="todo_icon" />
-              <h1>ToDo App</h1>
-            </div>
+          <LoginComponent v-if="!isLoggedIn" @logIn="isLoggedIn = true" />
 
-            <div v-if="!accessData" class="header_tabs">
-              <ul>
-                <li @click="setTab('all')">All</li>
-                <li @click="setTab('done')">Done</li>
-                <li @click="setTab('undone')">Undone</li>
-              </ul>
-
-              <div
-                :class="[ 'tabs_slider', 'translate-x-[' + tabPos + '%]' ]"
-              ></div>
-            </div>
-          </header>
-
-          <form
-            v-if="!accessData"
-            class="form_container"
-            @submit.prevent="addTodo"
-          >
-            <input
-              v-model="newTodo"
-              name="newTodo"
-              autocomplete="off"
-              placeholder="New ToDo"
-              @keyup.enter="!editMode ? addTodo : saveTodo"
-            />
-
-            <button v-if="!editMode" type="submit">Add</button>
-            <button v-else type="button" @click="saveTodo">Edit</button>
-          </form>
-
-          <form v-else class="data_access_form" @submit.prevent>
-            <div class="data_access_options">
-              <button type="button" @click="switchToInsertTab">
-                Insert Data
-              </button>
-
-              <h1>Or</h1>
-
-              <button type="button" @click="getData">Get Data</button>
-            </div>
-
-            <Transition name="fade" mode="out-in">
-              <div v-if="dataAccessTab === 'insertTab'" class="insert_data">
-                <input
-                  v-model="dataCode"
-                  name="insertData"
-                  autocomplete="off"
-                  placeholder="Insert Data"
-                  @keyup.enter="insertData"
-                />
-
-                <button type="button" @click="insertData">Insert</button>
+          <template v-else>
+            <header>
+              <div class="header_title">
+                <ToDoIcon class="todo_icon" />
+                <h1>ToDo App</h1>
               </div>
 
-              <div v-else-if="dataAccessTab === 'getTab'" class="get_data">
-                <div class="code_input">
-                  <span class="code_str">{{ dataCode || "No data" }}</span>
+              <div v-if="!accessData" class="header_tabs">
+                <ul>
+                  <li @click="setTab('all')">All</li>
+                  <li @click="setTab('done')">Done</li>
+                  <li @click="setTab('undone')">Undone</li>
+                </ul>
 
-                  <button type="button" @click="copyCode" :disabled="!dataCode">
-                    <CopyIcon class="copy_icon" />
-                  </button>
+                <div
+                  :class="[ 'tabs_slider', 'translate-x-[' + tabPos + '%]' ]"
+                ></div>
+              </div>
+            </header>
+
+            <form
+              v-if="!accessData"
+              class="form_container"
+              @submit.prevent="addTodo"
+            >
+              <input
+                v-model="newTodo"
+                name="newTodo"
+                autocomplete="off"
+                placeholder="New ToDo"
+                @keyup.enter="!editMode ? addTodo : saveTodo"
+              />
+
+              <button v-if="!editMode" type="submit">Add</button>
+              <button v-else type="button" @click="saveTodo">Edit</button>
+            </form>
+
+            <form v-else class="data_access_form" @submit.prevent>
+              <div class="data_access_options">
+                <button type="button" @click="switchToInsertTab">
+                  Insert Data
+                </button>
+
+                <h1>Or</h1>
+
+                <button type="button" @click="getData">Get Data</button>
+              </div>
+
+              <Transition name="fade" mode="out-in">
+                <div v-if="dataAccessTab === 'insertTab'" class="insert_data">
+                  <input
+                    v-model="dataCode"
+                    name="insertData"
+                    autocomplete="off"
+                    placeholder="Insert Data"
+                    @keyup.enter="insertData"
+                  />
+
+                  <button type="button" @click="insertData">Insert</button>
                 </div>
+
+                <div v-else-if="dataAccessTab === 'getTab'" class="get_data">
+                  <div class="code_input">
+                    <span class="code_str">{{ dataCode || "No data" }}</span>
+
+                    <button
+                      type="button"
+                      @click="copyCode"
+                      :disabled="!dataCode"
+                    >
+                      <CopyIcon class="copy_icon" />
+                    </button>
+                  </div>
+                </div>
+              </Transition>
+            </form>
+
+            <template v-if="!accessData">
+              <div>
+                <ul>
+                  <ToDoItem
+                    v-for="(todo, idx) in filteredTodos()"
+                    :todo="todo"
+                    :key="idx"
+                    @doneTodo="doneTodo"
+                    @removeTodo="removeTodo(idx)"
+                    @editTodo="editTodo(idx)"
+                  />
+                </ul>
               </div>
-            </Transition>
-          </form>
 
-          <template v-if="!accessData">
-            <div>
-              <ul>
-                <ToDoItem
-                  v-for="(todo, idx) in filteredTodos()"
-                  :todo="todo"
-                  :key="idx"
-                  @doneTodo="doneTodo"
-                  @removeTodo="removeTodo(idx)"
-                  @editTodo="editTodo(idx)"
-                />
-              </ul>
-            </div>
-
-            <h4 class="empty_msg" v-if="!todos.length">Empty list.</h4>
+              <h4 class="empty_msg" v-if="!todos.length">Empty list.</h4>
+            </template>
           </template>
 
           <NotifyComponent v-model="notify" v-bind="notifyProps" />
@@ -424,6 +434,7 @@
       const appConfig = {
         dataAccessTab,
         accessData,
+        isLoggedIn,
         newTodo,
         todos,
         editMode,
@@ -444,44 +455,253 @@
         copyCode,
       };
 
-      const toDoTemplate = /*html*/ `
-            <li
-              class="todo_item"
-              :class="todo.done ? 'border-green-500' : 'border-red-500'"
-            >
-              <span
-                :class="{ 'line-through': todo.done }"
-                @click="$emit('doneTodo', todo)"
-              >
-                {{ todo.content }}
-              </span>
+      const loginTemplate = /*html*/ `
+        <div class="login_card">
+          <div class="login_title">
+            <h1>Login</h1>
+            <p>Hi, Welcome back 👋</p>
+          </div>
 
-              <div class="todo_options">
-                <button @click="$emit('removeTodo')">
-                  <DeleteIcon class="delete_icon" />
-                </button>
-                <button @click="$emit('editTodo')">
-                  <EditIcon class="edit_icon" />
-                </button>
+          <div class="social_login">
+            <button class="social_login_btn">
+              <GoogleIcon width="20" />
+              <span>Login with Google</span>
+            </button>
+          </div>
+
+          <div class="login_separator">
+            <span>Or</span>
+          </div>
+
+          <form class="login_form" @submit.prevent="$emit('logIn')">
+            <label>
+              <p class="login_input_title">Email address</p>
+              <input
+                id="email"
+                name="email"
+                type="email"
+                class="login_input"
+                placeholder="Enter email address"
+              />
+            </label>
+
+            <label>
+              <p class="login_input_title">Password</p>
+
+              <div class="relative">
+                <input
+                  id="password"
+                  name="password"
+                  :type="showPass ? 'text' : 'password'"
+                  autocomplete="on"
+                  class="login_input"
+                  placeholder="Enter your password"
+                />
+
+                <div class="see_pass_btn">
+                  <SeePassIcon width="25" v-model="showPass" />
+                </div>
               </div>
-            </li>
-          `;
+            </label>
+
+            <div class="login_extra_options">
+              <label class="remember_option">
+                <input type="checkbox" />
+                <span>Remember me</span>
+              </label>
+
+              <a href="#" class="reset_option"> Forgot Password? </a>
+            </div>
+
+            <button class="login_btn">
+              <LoginIcon width="25" />
+              <span>Login</span>
+            </button>
+
+            <p class="signup_option">
+              Not registered yet?
+              <a href="#">
+                <span>Register now </span>
+                <OpenLinkIcon width="20" />
+              </a>
+            </p>
+          </form>
+        </div>
+      `;
+
+      const loginConfig = { showPass };
+
+      const toDoTemplate = /*html*/ `
+        <li
+          class="todo_item"
+          :class="todo.done ? 'border-green-500' : 'border-red-500'"
+        >
+          <span
+            :class="{ 'line-through': todo.done }"
+            @click="$emit('doneTodo', todo)"
+          >
+            {{ todo.content }}
+          </span>
+
+          <div class="todo_options">
+            <button @click="$emit('removeTodo')">
+              <DeleteIcon class="delete_icon" />
+            </button>
+            <button @click="$emit('editTodo')">
+              <EditIcon class="edit_icon" />
+            </button>
+          </div>
+        </li>
+      `;
+
+      const googleIcon = /*html*/ `
+        <svg viewBox="0 0 24 24">
+          <path
+            fill="#EA4335"
+            d="M5.26620003,9.76452941 C6.19878754,6.93863203 8.85444915,4.90909091 
+                12,4.90909091 C13.6909091,4.90909091 15.2181818,5.50909091 
+                16.4181818,6.49090909 L19.9090909,3 C17.7818182,1.14545455 
+                15.0545455,0 12,0 C7.27006974,0 3.1977497,2.69829785 
+                1.23999023,6.65002441 L5.26620003,9.76452941 Z"
+          />
+          <path
+            fill="#34A853"
+            d="M16.0407269,18.0125889 C14.9509167,18.7163016 13.5660892,19.0909091 
+                12,19.0909091 C8.86648613,19.0909091 6.21911939,17.076871 5.27698177,14.2678769 
+                L1.23746264,17.3349879 C3.19279051,21.2936293 7.26500293,24 12,24 C14.9328362,24 
+                17.7353462,22.9573905 19.834192,20.9995801 L16.0407269,18.0125889 Z"
+          />
+          <path
+            fill="#4A90E2"
+            d="M19.834192,20.9995801 C22.0291676,18.9520994 23.4545455,15.903663 
+                23.4545455,12 C23.4545455,11.2909091 23.3454545,10.5272727 23.1818182,9.81818182 
+                L12,9.81818182 L12,14.4545455 L18.4363636,14.4545455 C18.1187732,16.013626 
+                17.2662994,17.2212117 16.0407269,18.0125889 L19.834192,20.9995801 Z"
+          />
+          <path
+            fill="#FBBC05"
+            d="M5.27698177,14.2678769 C5.03832634,13.556323 4.90909091,12.7937589 4.90909091,12 
+                C4.90909091,11.2182781 5.03443647,10.4668121 5.26620003,9.76452941 
+                L1.23999023,6.65002441 C0.43658717,8.26043162 0,10.0753848 0,12 C0,13.9195484 
+                0.444780743,15.7301709 1.23746264,17.3349879 L5.27698177,14.2678769 Z"
+          />
+        </svg>
+      `;
+
+      const seePassIcon = /*html*/ `
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          class="text-slate-400"
+          @click="$emit('update:modelValue', !modelValue)"
+        >
+          <g v-if="!modelValue">
+            <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2" />
+
+            <path
+              d="M20.188 10.9343C20.5762 11.4056 20.7703 11.6412 20.7703 
+                  12C20.7703 12.3588 20.5762 12.5944 20.188 13.0657C18.7679 
+                  14.7899 15.6357 18 12 18C8.36427 18 5.23206 14.7899 3.81197 
+                  13.0657C3.42381 12.5944 3.22973 12.3588 3.22973 12C3.22973 
+                  11.6412 3.42381 11.4056 3.81197 10.9343C5.23206 9.21014 
+                  8.36427 6 12 6C15.6357 6 18.7679 9.21014 20.188 10.9343Z"
+              stroke="currentColor"
+              stroke-width="2"
+            />
+          </g>
+
+          <g v-else>
+            <path
+              fill-rule="evenodd"
+              clip-rule="evenodd"
+              d="M15.9202 12.7988C15.9725 12.5407 16 12.2736 16 12C16 9.79086 
+                  14.2091 8 12 8C11.7264 8 11.4593 8.02746 11.2012 8.07977L15.9202 
+                  12.7988ZM8.66676 9.78799C8.24547 10.4216 8 11.1821 8 12C8 14.2091 
+                  9.79086 16 12 16C12.8179 16 13.5784 15.7545 14.212 15.3332L12.7381 
+                  13.8594C12.5098 13.9501 12.2607 14 12 14C10.8954 14 10 13.1046 
+                  10 12C10 11.7393 10.0499 11.4902 10.1406 11.2619L8.66676 9.78799Z"
+              fill="currentColor"
+            />
+
+            <path
+              fill-rule="evenodd"
+              clip-rule="evenodd"
+              d="M16.5191 17.6405L15.0499 16.1712C14.0776 16.6805 13.0477 17 12 
+                  17C10.4742 17 8.98616 16.3224 7.65914 15.3677C6.34002 14.4186 5.26409 
+                  13.2558 4.58386 12.43C4.48409 12.3088 4.40958 12.2182 4.34785 
+                  12.1385C4.29899 12.0754 4.26786 12.0315 4.24756 12C4.26786 11.9685 
+                  4.29899 11.9246 4.34785 11.8615C4.40958 11.7818 4.48409 11.6912 4.58386 
+                  11.57C5.24928 10.7622 6.29335 9.63187 7.57331 8.69463L6.14458 
+                  7.2659C4.79643 8.29616 3.72247 9.47005 3.04009 10.2985C3.01651 
+                  10.3272 2.99192 10.3566 2.96662 10.3869L2.96661 10.3869C2.65318 
+                  10.7624 2.22974 11.2696 2.22974 12C2.22974 12.7304 2.65318 13.2376 
+                  2.9666 13.6131L2.96682 13.6133C2.99205 13.6435 3.01657 13.6729 3.04009 
+                  13.7015C3.77996 14.5998 4.98018 15.9041 6.49111 16.9912C7.99416 18.0725 
+                  9.89008 19 12 19C13.67 19 15.206 18.419 16.5191 17.6405ZM8.80682 
+                  5.6855C9.79062 5.26871 10.8643 5 12 5C14.1099 5 16.0059 5.92747 
+                  17.5089 7.00885C19.0198 8.0959 20.2201 9.40025 20.9599 10.2985C20.9835 
+                  10.3272 21.0081 10.3566 21.0334 10.3869L21.0334 10.3869C21.3468 10.7624 
+                  21.7703 11.2696 21.7703 12C21.7703 12.7304 21.3468 13.2376 21.0334 
+                  13.6131C21.0081 13.6434 20.9835 13.6728 20.9599 13.7015C20.4733 14.2923 
+                  19.7874 15.0589 18.945 15.8237L17.529 14.4077C18.3089 13.708 18.9539 
+                  12.9912 19.4162 12.43C19.5159 12.3088 19.5904 12.2182 19.6522 
+                  12.1385C19.701 12.0754 19.7322 12.0315 19.7525 12C19.7322 11.9685 
+                  19.701 11.9246 19.6522 11.8615C19.5904 11.7818 19.5159 11.6912 19.4162 
+                  11.57C18.7359 10.7442 17.66 9.58138 16.3409 8.63233C15.0139 7.6776 
+                  13.5258 7 12 7C11.449 7 10.9029 7.08837 10.3676 7.24624L8.80682 5.6855Z"
+              fill="currentColor"
+            />
+
+            <path d="M5 2L21 18" stroke="currentColor" stroke-width="2" />
+          </g>
+        </svg>
+      `;
+
+      const loginIcon = /*html*/ `
+        <svg
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          stroke-width="2"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1"
+          />
+        </svg>
+      `;
+
+      const openLinkIcon = /*html*/ `
+        <svg
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          stroke-width="2"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+          />
+        </svg>
+      `;
 
       const toDoIcon = /*html*/ `
-            <svg fill="#9ca3af" viewBox="0 0 24 24">
-              <path
-                d="M2,11H8a1,1,0,0,0,1-1V4A1,1,0,0,0,8,3H2A1,1,0,0,0,1,4v6A1,1,0,0,0,2,11ZM3,
+        <svg fill="#9ca3af" viewBox="0 0 24 24">
+          <path
+            d="M2,11H8a1,1,0,0,0,1-1V4A1,1,0,0,0,8,3H2A1,1,0,0,0,1,4v6A1,1,0,0,0,2,11ZM3,
                 5H7V9H3ZM23,7a1,1,0,0,1-1,1H12a1,1,0,0,1,0-2H22A1,1,0,0,1,23,7Zm0,10a1,1,0,0,1-1,
                 1H12a1,1,0,0,1,0-2H22A1,1,0,0,1,23,17ZM3.235,19.7,1.281,17.673a1,1,0,0,1,1.438-1.391l1.252,
                 1.3L7.3,14.289A1,1,0,1,1,8.7,15.711l-4.046,4a1,1,0,0,1-.7.289H3.942A1,1,0,0,1,3.235,19.7Z"
-              />
-            </svg>
-          `;
+          />
+        </svg>
+      `;
 
       const copyIcon = /*html*/ `
-            <svg viewBox="0 0 24 24">
-              <path
-                d="M19.53 8L14 2.47C13.8595 2.32931 13.6688 2.25018 13.47 2.25H11C10.2707
+        <svg viewBox="0 0 24 24">
+          <path
+            d="M19.53 8L14 2.47C13.8595 2.32931 13.6688 2.25018 13.47 2.25H11C10.2707
                   2.25 9.57118 2.53973 9.05546 3.05546C8.53973 3.57118 8.25 4.27065 8.25
                   5V6.25H7C6.27065 6.25 5.57118 6.53973 5.05546 7.05546C4.53973 7.57118 4.25
                   8.27065 4.25 9V19C4.25 19.7293 4.53973 20.4288 5.05546 20.9445C5.57118 21.4603
@@ -498,70 +718,70 @@
                   3.8817 10.6685 3.75 11 3.75H12.75V8.5C12.7526 8.69811 12.8324 8.88737 12.9725
                   9.02747C13.1126 9.16756 13.3019 9.24741 13.5 9.25H18.25V15C18.25 15.3315 18.1183
                   15.6495 17.8839 15.8839C17.6495 16.1183 17.3315 16.25 17 16.25Z"
-              />
-            </svg>
-          `;
+          />
+        </svg>
+      `;
 
       const deleteIcon = /*html*/ `
-            <svg viewBox="0 0 24 24">
-              <path
-                d="M10 12V17"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              />
-              <path
-                d="M14 12V17"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              />
-              <path
-                d="M4 7H20"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              />
-              <path
-                d="M6 10V18C6 19.6569 7.34315 21 9 21H15C16.6569 21 18 19.6569 18 18V10"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              />
-              <path
-                d="M9 5C9 3.89543 9.89543 3 11 3H13C14.1046 3 15 3.89543 15 5V7H9V5Z"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              />
-            </svg>
-          `;
+        <svg viewBox="0 0 24 24">
+          <path
+            d="M10 12V17"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+          <path
+            d="M14 12V17"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+          <path
+            d="M4 7H20"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+          <path
+            d="M6 10V18C6 19.6569 7.34315 21 9 21H15C16.6569 21 18 19.6569 18 18V10"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+          <path
+            d="M9 5C9 3.89543 9.89543 3 11 3H13C14.1046 3 15 3.89543 15 5V7H9V5Z"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+        </svg>
+      `;
 
       const editIcon = /*html*/ `
-            <svg viewBox="0 0 24 24">
-              <path
-                d="M12 3.99997H6C4.89543 3.99997 4 4.8954 4 5.99997V18C4 19.1045 4.89543 20 6 20H18C19.1046
+        <svg viewBox="0 0 24 24">
+          <path
+            d="M12 3.99997H6C4.89543 3.99997 4 4.8954 4 5.99997V18C4 19.1045 4.89543 20 6 20H18C19.1046
                 20 20 19.1045 20 18V12M18.4142 8.41417L19.5 7.32842C20.281 6.54737 20.281 5.28104 19.5
                 4.5C18.7189 3.71895 17.4526 3.71895 16.6715 4.50001L15.5858 5.58575M18.4142 8.41417L12.3779
                 14.4505C12.0987 14.7297 11.7431 14.9201 11.356 14.9975L8.41422 15.5858L9.00257 12.6441C9.08001
                 12.2569 9.27032 11.9013 9.54951 11.6221L15.5858 5.58575M18.4142 8.41417L15.5858 5.58575"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              />
-            </svg>
-          `;
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+        </svg>
+      `;
 
       const closeIcon = /*html*/ `
-            <svg viewBox="0 0 16 16" fill="none">
-              <path
-                d="M0.92524 0.687069C1.126 0.486219 1.39823 0.373377 1.68209 0.373377C1.96597
+        <svg viewBox="0 0 16 16" fill="none">
+          <path
+            d="M0.92524 0.687069C1.126 0.486219 1.39823 0.373377 1.68209 0.373377C1.96597
                     0.373377 2.2382 0.486219 2.43894 0.687069L8.10514 6.35813L13.7714 0.687069C13.8701
                     0.584748 13.9882 0.503105 14.1188 0.446962C14.2494 0.39082 14.3899 0.361248 14.5321
                     0.360026C14.6742 0.358783 14.8151 0.38589 14.9468 0.439762C15.0782 0.493633 15.1977
@@ -575,75 +795,75 @@
                     14.8474 0.627232 14.5787 0.624791 14.2977C0.62235 14.0168 0.730236 13.7462 0.92524
                     13.5441L6.59144 7.87312L0.92524 2.20206C0.724562 2.00115 0.611816 1.72867 0.611816
                     1.44457C0.611816 1.16047 0.724562 0.887983 0.92524 0.687069Z"
-                fill="currentColor"
-              />
-            </svg>
-          `;
+            fill="currentColor"
+          />
+        </svg>
+      `;
 
       const sunIcon = /*html*/ `
-            <svg fill="currentColor" viewBox="0 0 20 20">
-              <path
-                d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1
+        <svg fill="currentColor" viewBox="0 0 20 20">
+          <path
+            d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1
                     1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0
                     11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1
                     1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414
                     8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z"
-                fillRule="evenodd"
-                clipRule="evenodd"
-              />
-            </svg>
-          `;
+            fillRule="evenodd"
+            clipRule="evenodd"
+          />
+        </svg>
+      `;
 
       const moonIcon = /*html*/ `
-            <svg fill="currentColor" viewBox="0 0 20 20">
-              <path
-                d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"
-              />
-            </svg>
-          `;
+        <svg fill="currentColor" viewBox="0 0 20 20">
+          <path
+            d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"
+          />
+        </svg>
+      `;
 
       const notifyTemplate = /*html*/ `
-            <div class="notify_container">
-              <div
-                class="notify_toast"
-                role="alert"
-                v-for="(notify, idx) in notifyItems"
-                :key="notify.msg + idx"
-                :class="[notify.color, notify.show ? '-translate-x-[165%]' : 'translate-x-0']"
+        <div class="notify_container">
+          <div
+            class="notify_toast"
+            role="alert"
+            v-for="(notify, idx) in notifyItems"
+            :key="notify.msg + idx"
+            :class="[notify.color, notify.show ? '-translate-x-[165%]' : 'translate-x-0']"
+          >
+            <div>
+              <span>{{ notify.msg }}</span>
+              <button
+                @click="notify.show = false"
+                type="button"
+                class="toast_close"
               >
-                <div>
-                  <span>{{ notify.msg }}</span>
-                  <button
-                    @click="notify.show = false"
-                    type="button"
-                    class="toast_close"
-                  >
-                    <span class="sr-only">Close</span>
-                    <CloseIcon />
-                  </button>
-                </div>
-              </div>
+                <span class="sr-only">Close</span>
+                <CloseIcon />
+              </button>
             </div>
-          `;
+          </div>
+        </div>
+      `;
 
       const notifyConfig = { setNotifyPos, notifyItems };
 
       const themeSwitcherTemplate = /*html*/ `
-            <div class="theme_switcher_container">
-              <input
-                type="checkbox"
-                id="theme_switcher_checkbox"
-                @change="changeTheme"
-                :checked="theme"
-              />
+        <div class="theme_switcher_container">
+          <input
+            type="checkbox"
+            id="theme_switcher_checkbox"
+            @change="changeTheme"
+            :checked="theme"
+          />
 
-              <label for="theme_switcher_checkbox" class="theme_switcher_label">
-                <SunIcon />
-                <MoonIcon />
-                <div class="theme_switcher_ball"></div>
-              </label>
-            </div>
-          `;
+          <label for="theme_switcher_checkbox" class="theme_switcher_label">
+            <SunIcon />
+            <MoonIcon />
+            <div class="theme_switcher_ball"></div>
+          </label>
+        </div>
+      `;
 
       const themeSwitcherConfig = { theme, changeTheme };
 
@@ -652,11 +872,25 @@
         template: appTemplate,
       });
 
+      app.component("LoginComponent", {
+        setup: () => loginConfig,
+        template: loginTemplate,
+      });
+
       app.component("ToDoItem", {
         props: { todo: { done: Boolean, content: String } },
         template: toDoTemplate,
       });
 
+      app.component("GoogleIcon", { template: googleIcon });
+
+      app.component("SeePassIcon", {
+        props: { modelValue: Boolean },
+        template: seePassIcon,
+      });
+
+      app.component("LoginIcon", { template: loginIcon });
+      app.component("OpenLinkIcon", { template: openLinkIcon });
       app.component("ToDoIcon", { template: toDoIcon });
       app.component("CopyIcon", { template: copyIcon });
       app.component("DeleteIcon", { template: deleteIcon });
@@ -704,6 +938,85 @@
 
       main {
         @apply max-w-2xl mr-auto ml-auto;
+      }
+
+      .login_card {
+        @apply max-w-lg mx-auto my-10 bg-white p-8 rounded-xl shadow-2xl dark:shadow shadow-slate-300;
+      }
+
+      .login_title {
+        @apply flex flex-col gap-3 text-slate-700;
+      }
+
+      .login_title h1 {
+        @apply text-4xl font-medium;
+      }
+
+      .social_login {
+        @apply mt-8 mb-10;
+      }
+
+      .social_login_btn {
+        @apply w-full text-center py-3 my-3 border flex space-x-2 items-center justify-center;
+        @apply border-slate-200 rounded-lg text-slate-700 hover:border-slate-400;
+        @apply hover:text-slate-900 hover:shadow transition duration-150;
+      }
+
+      .login_separator {
+        @apply flex items-center justify-center border-t-[1px] border-t-slate-300 w-full;
+        @apply relative text-slate-700;
+      }
+
+      .login_separator span {
+        @apply -mt-1 bg-white px-5 absolute;
+      }
+
+      .login_form {
+        @apply flex flex-col gap-5 my-8;
+      }
+
+      .login_input_title {
+        @apply font-medium text-slate-700 pb-2;
+      }
+
+      .login_input {
+        @apply w-full py-3 border border-slate-200 rounded-lg px-3 focus:outline-none;
+        @apply focus:border-slate-500 hover:shadow text-slate-700;
+      }
+
+      .see_pass_btn {
+        @apply flex items-center absolute inset-y-0 right-0 m-1 px-2 text-sm leading-5;
+        @apply text-slate-700 bg-white select-none;
+      }
+
+      .login_extra_options {
+        @apply flex flex-row justify-between my-1;
+      }
+
+      .remember_option {
+        @apply flex items-center gap-2 text-slate-700 select-none;
+      }
+
+      .remember_option input {
+        @apply w-4 h-4;
+      }
+
+      .reset_option {
+        @apply font-medium text-indigo-600;
+      }
+
+      .login_btn {
+        @apply w-full py-3 font-medium text-white bg-indigo-600 hover:bg-indigo-500;
+        @apply rounded-lg border-indigo-500 hover:shadow inline-flex space-x-2 items-center;
+        @apply justify-center;
+      }
+
+      .signup_option {
+        @apply text-center text-slate-700;
+      }
+
+      .signup_option a {
+        @apply text-indigo-600 font-medium inline-flex space-x-1 items-center;
       }
 
       header {
