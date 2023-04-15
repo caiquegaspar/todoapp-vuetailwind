@@ -78,17 +78,22 @@
 
     <link rel="manifest" href="/manifest.json" />
 
-    <meta name="msapplication-TileColor" content="#ffffff" />
     <meta
-      name="msapplication-TileImage"
-      content="/assets/ms-icon-144x144.png"
+      name="theme-color"
+      media="(prefers-color-scheme: light)"
+      content="#fff"
     />
-    <meta name="msapplication-config" content="/browserconfig.xml" />
-    <meta name="theme-color" content="#ffffff" />
+    <meta
+      name="theme-color"
+      media="(prefers-color-scheme: dark)"
+      content="#1e293b"
+    />
 
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/vue@3.2.47/dist/vue.global.js"></script>
+    <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
 
+    <!-- PWA config -->
     <script>
       if ("serviceWorker" in navigator) {
         window.addEventListener("load", function () {
@@ -98,10 +103,20 @@
             .catch((err) => console.log("service worker not registered", err));
         });
       }
+    </script>
 
+    <!-- Tailwind config -->
+    <script>
       tailwind.config = {
         darkMode: "class",
       };
+    </script>
+
+    <!-- Axios config -->
+    <script>
+      const instance = axios.create({
+        baseURL: "https://vuetodo-app.api.deskree.com/api/v1/",
+      });
     </script>
   </head>
 
@@ -112,6 +127,7 @@
       const { createApp, ref, computed } = Vue;
 
       const { search } = window.location;
+      const loginToken = localStorage.getItem("loginToken") || "";
       const todosData = JSON.parse(localStorage.getItem("todos")) || [];
       const userTheme = localStorage.getItem("theme");
       const systemTheme = window.matchMedia(
@@ -129,12 +145,21 @@
         granted: ["Write access granted!", "bg-green-500"],
         denied: ["Write access denied!", "bg-red-500"],
         inserted: ["Successfully inserted", "bg-green-500"],
+        loggedin: ["Successfully logged in", "bg-green-500"],
+        loginerr: ["Failed to login", "bg-red-500"],
+        dologin: ["Please log in", "bg-yellow-500"],
       };
 
       const theme = computed(() => userTheme === "dark");
       const accessData = computed(() => search === "?access-data");
 
-      const isLoggedIn = ref(true);
+      const userCredentials = ref({
+        email: "",
+        password: "",
+      });
+      const isLoggedIn = ref(false);
+      const loginLoad = ref(false);
+      const token = ref(loginToken);
       const newTodo = ref("");
       const todos = ref(todosData);
       const editMode = ref(false);
@@ -147,6 +172,59 @@
       const notifyProps = ref(staticNotifyProps);
       const notifyItems = ref([]);
       const showPass = ref(false);
+
+      const signUp = async () => {};
+
+      const signIn = async (emit) => {
+        loginLoad.value = true;
+
+        try {
+          const signInResponse = await instance({
+            url: "auth/accounts/sign-in/email",
+            method: "POST",
+            data: {
+              // email: "caiqsgaspar@gmail.com",
+              // password: "123@5678",
+              email: userCredentials.value.email,
+              password: userCredentials.value.password,
+            },
+          });
+          const signInResult = signInResponse.data;
+          const token = signInResult.data.idToken;
+
+          localStorage.setItem("loginToken", token);
+
+          showToast(...notifyCases.loggedin);
+          emit("isLoggedIn");
+          setTimeout(() => (loginLoad.value = false), 1000);
+        } catch (err) {
+          showToast(...notifyCases.loginerr);
+          loginLoad.value = false;
+        }
+      };
+
+      const getTodos = async () => {
+        const todosResponse = await instance({
+          url: "rest/collections/todos",
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${token.value}`,
+          },
+        });
+        const todosResult = todosResponse.data;
+      };
+
+      const initialValidation = async () => {
+        if (token.value) {
+          try {
+            await getTodos();
+            isLoggedIn.value = true;
+            showToast(...notifyCases.loggedin);
+          } catch (err) {
+            showToast(...notifyCases.dologin);
+          }
+        }
+      };
 
       const setTab = (str) => {
         const rules = { all: 0, done: 100, undone: 200 };
@@ -328,102 +406,12 @@
 
       const appTemplate = /*html*/ `
         <main>
-          <LoginComponent v-if="!isLoggedIn" @logIn="isLoggedIn = true" />
-
-          <template v-else>
-            <header>
-              <div class="header_title">
-                <ToDoIcon class="todo_icon" />
-                <h1>ToDo App</h1>
-              </div>
-
-              <div v-if="!accessData" class="header_tabs">
-                <ul>
-                  <li @click="setTab('all')">All</li>
-                  <li @click="setTab('done')">Done</li>
-                  <li @click="setTab('undone')">Undone</li>
-                </ul>
-
-                <div
-                  :class="[ 'tabs_slider', 'translate-x-[' + tabPos + '%]' ]"
-                ></div>
-              </div>
-            </header>
-
-            <form
-              v-if="!accessData"
-              class="form_container"
-              @submit.prevent="addTodo"
-            >
-              <input
-                v-model="newTodo"
-                name="newTodo"
-                autocomplete="off"
-                placeholder="New ToDo"
-                @keyup.enter="!editMode ? addTodo : saveTodo"
-              />
-
-              <button v-if="!editMode" type="submit">Add</button>
-              <button v-else type="button" @click="saveTodo">Edit</button>
-            </form>
-
-            <form v-else class="data_access_form" @submit.prevent>
-              <div class="data_access_options">
-                <button type="button" @click="switchToInsertTab">
-                  Insert Data
-                </button>
-
-                <h1>Or</h1>
-
-                <button type="button" @click="getData">Get Data</button>
-              </div>
-
-              <Transition name="fade" mode="out-in">
-                <div v-if="dataAccessTab === 'insertTab'" class="insert_data">
-                  <input
-                    v-model="dataCode"
-                    name="insertData"
-                    autocomplete="off"
-                    placeholder="Insert Data"
-                    @keyup.enter="insertData"
-                  />
-
-                  <button type="button" @click="insertData">Insert</button>
-                </div>
-
-                <div v-else-if="dataAccessTab === 'getTab'" class="get_data">
-                  <div class="code_input">
-                    <span class="code_str">{{ dataCode || "No data" }}</span>
-
-                    <button
-                      type="button"
-                      @click="copyCode"
-                      :disabled="!dataCode"
-                    >
-                      <CopyIcon class="copy_icon" />
-                    </button>
-                  </div>
-                </div>
-              </Transition>
-            </form>
-
-            <template v-if="!accessData">
-              <div>
-                <ul>
-                  <ToDoItem
-                    v-for="(todo, idx) in filteredTodos()"
-                    :todo="todo"
-                    :key="idx"
-                    @doneTodo="doneTodo"
-                    @removeTodo="removeTodo(idx)"
-                    @editTodo="editTodo(idx)"
-                  />
-                </ul>
-              </div>
-
-              <h4 class="empty_msg" v-if="!todos.length">Empty list.</h4>
-            </template>
-          </template>
+          <Transition name="scale" mode="out-in">
+            <KeepAlive>
+              <LoginComponent v-if="!isLoggedIn" @isLoggedIn="isLoggedIn = true" />
+              <MainComponent v-else />
+            </KeepAlive>
+          </Transition>
 
           <NotifyComponent v-model="notify" v-bind="notifyProps" />
 
@@ -431,17 +419,210 @@
         </main>
       `;
 
-      const appConfig = {
+      const appConfig = { isLoggedIn, notify, notifyProps };
+
+      const loginTemplate = /*html*/ `
+        <div class="login_card">
+          <div
+            class="login_contents"
+            :class="loginLoad ? 'max-h-0 opacity-0 pointer-events-none' : 'max-h-screen opacity-1 pointer-events-auto'"
+          >
+            <div class="login_title">
+              <h1>Login</h1>
+              <p>Hi, Welcome back 👋</p>
+            </div>
+
+            <div v-if="false" class="social_login">
+              <button class="social_login_btn" @click="loginLoad = !loginLoad">
+                <GoogleIcon width="20" />
+                <span>Login with Google</span>
+              </button>
+            </div>
+
+            <div v-if="false" class="login_separator">
+              <span>Or</span>
+            </div>
+
+            <form class="login_form" @submit.prevent="signInFn">
+              <label>
+                <p class="login_input_title">Email address</p>
+                <input
+                  v-model="userCredentials.email"
+                  id="email"
+                  name="email"
+                  type="email"
+                  class="login_input"
+                  placeholder="Enter email address"
+                  required
+                />
+              </label>
+
+              <label>
+                <p class="login_input_title">Password</p>
+
+                <div class="relative">
+                  <label>
+                    <input
+                      v-model="userCredentials.password"
+                      id="password"
+                      name="password"
+                      :type="showPass ? 'text' : 'password'"
+                      autocomplete="on"
+                      class="login_input"
+                      placeholder="Enter your password"
+                      required
+                    />
+                  </label>
+
+                  <div class="see_pass_btn">
+                    <SeePassIcon width="25" v-model="showPass" />
+                  </div>
+                </div>
+              </label>
+
+              <div class="login_extra_options">
+                <label class="remember_option">
+                  <input type="checkbox" />
+                  <span>Remember me</span>
+                </label>
+
+                <a href="#" class="reset_option"> Forgot Password? </a>
+              </div>
+
+              <button class="login_btn">
+                <LoginIcon width="25" />
+                <span>Login</span>
+              </button>
+
+              <p class="signup_option">
+                Not registered yet?
+                <a href="#">
+                  <span>Register now </span>
+                  <OpenLinkIcon width="20" />
+                </a>
+              </p>
+            </form>
+          </div>
+
+          <div
+            class="login_loader"
+            :class="!loginLoad ? 'opacity-0' : 'opacity-1'"
+          >
+            <svg width="200" class="circle_loader" viewBox="25 25 50 50">
+              <circle
+                cx="50"
+                cy="50"
+                r="20"
+                stroke-width="2"
+                stroke-dasharray="1, 200"
+                stroke-dashoffset="0"
+              ></circle>
+            </svg>
+          </div>
+        </div>
+      `;
+
+      const mainTemplate = /*html*/ `
+        <div>
+          <header>
+            <div class="header_title">
+              <ToDoIcon class="todo_icon" />
+              <h1>ToDo App</h1>
+            </div>
+
+            <div v-if="!accessData" class="header_tabs">
+              <ul>
+                <li @click="setTab('all')">All</li>
+                <li @click="setTab('done')">Done</li>
+                <li @click="setTab('undone')">Undone</li>
+              </ul>
+
+              <div
+                :class="[ 'tabs_slider', 'translate-x-[' + tabPos + '%]' ]"
+              ></div>
+            </div>
+          </header>
+
+          <form
+            v-if="!accessData"
+            class="form_container"
+            @submit.prevent="addTodo"
+          >
+            <input
+              v-model="newTodo"
+              name="newTodo"
+              autocomplete="off"
+              placeholder="New ToDo"
+              @keyup.enter="!editMode ? addTodo : saveTodo"
+            />
+
+            <button v-if="!editMode" type="submit">Add</button>
+            <button v-else type="button" @click="saveTodo">Edit</button>
+          </form>
+
+          <form v-else class="data_access_form" @submit.prevent>
+            <div class="data_access_options">
+              <button type="button" @click="switchToInsertTab">
+                Insert Data
+              </button>
+
+              <h1>Or</h1>
+
+              <button type="button" @click="getData">Get Data</button>
+            </div>
+
+            <Transition name="fade" mode="out-in">
+              <div v-if="dataAccessTab === 'insertTab'" class="insert_data">
+                <input
+                  v-model="dataCode"
+                  name="insertData"
+                  autocomplete="off"
+                  placeholder="Insert Data"
+                  @keyup.enter="insertData"
+                />
+
+                <button type="button" @click="insertData">Insert</button>
+              </div>
+
+              <div v-else-if="dataAccessTab === 'getTab'" class="get_data">
+                <div class="code_input">
+                  <span class="code_str">{{ dataCode || "No data" }}</span>
+
+                  <button type="button" @click="copyCode" :disabled="!dataCode">
+                    <CopyIcon class="copy_icon" />
+                  </button>
+                </div>
+              </div>
+            </Transition>
+          </form>
+
+          <template v-if="!accessData">
+            <div>
+              <ul>
+                <ToDoItem
+                  v-for="(todo, idx) in filteredTodos()"
+                  :todo="todo"
+                  :key="idx"
+                  @doneTodo="doneTodo"
+                  @removeTodo="removeTodo(idx)"
+                  @editTodo="editTodo(idx)"
+                />
+              </ul>
+            </div>
+
+            <h4 class="empty_msg" v-if="!todos.length">Empty list.</h4>
+          </template>
+        </div>
+      `;
+
+      const mainConfig = {
         dataAccessTab,
         accessData,
-        isLoggedIn,
         newTodo,
         todos,
         editMode,
         dataCode,
         tabPos,
-        notify,
-        notifyProps,
         setTab,
         filteredTodos,
         addTodo,
@@ -454,82 +635,6 @@
         getData,
         copyCode,
       };
-
-      const loginTemplate = /*html*/ `
-        <div class="login_card">
-          <div class="login_title">
-            <h1>Login</h1>
-            <p>Hi, Welcome back 👋</p>
-          </div>
-
-          <div class="social_login">
-            <button class="social_login_btn">
-              <GoogleIcon width="20" />
-              <span>Login with Google</span>
-            </button>
-          </div>
-
-          <div class="login_separator">
-            <span>Or</span>
-          </div>
-
-          <form class="login_form" @submit.prevent="$emit('logIn')">
-            <label>
-              <p class="login_input_title">Email address</p>
-              <input
-                id="email"
-                name="email"
-                type="email"
-                class="login_input"
-                placeholder="Enter email address"
-              />
-            </label>
-
-            <label>
-              <p class="login_input_title">Password</p>
-
-              <div class="relative">
-                <input
-                  id="password"
-                  name="password"
-                  :type="showPass ? 'text' : 'password'"
-                  autocomplete="on"
-                  class="login_input"
-                  placeholder="Enter your password"
-                />
-
-                <div class="see_pass_btn">
-                  <SeePassIcon width="25" v-model="showPass" />
-                </div>
-              </div>
-            </label>
-
-            <div class="login_extra_options">
-              <label class="remember_option">
-                <input type="checkbox" />
-                <span>Remember me</span>
-              </label>
-
-              <a href="#" class="reset_option"> Forgot Password? </a>
-            </div>
-
-            <button class="login_btn">
-              <LoginIcon width="25" />
-              <span>Login</span>
-            </button>
-
-            <p class="signup_option">
-              Not registered yet?
-              <a href="#">
-                <span>Register now </span>
-                <OpenLinkIcon width="20" />
-              </a>
-            </p>
-          </form>
-        </div>
-      `;
-
-      const loginConfig = { showPass };
 
       const toDoTemplate = /*html*/ `
         <li
@@ -558,31 +663,31 @@
         <svg viewBox="0 0 24 24">
           <path
             fill="#EA4335"
-            d="M5.26620003,9.76452941 C6.19878754,6.93863203 8.85444915,4.90909091 
-                12,4.90909091 C13.6909091,4.90909091 15.2181818,5.50909091 
-                16.4181818,6.49090909 L19.9090909,3 C17.7818182,1.14545455 
-                15.0545455,0 12,0 C7.27006974,0 3.1977497,2.69829785 
+            d="M5.26620003,9.76452941 C6.19878754,6.93863203 8.85444915,4.90909091
+                12,4.90909091 C13.6909091,4.90909091 15.2181818,5.50909091
+                16.4181818,6.49090909 L19.9090909,3 C17.7818182,1.14545455
+                15.0545455,0 12,0 C7.27006974,0 3.1977497,2.69829785
                 1.23999023,6.65002441 L5.26620003,9.76452941 Z"
           />
           <path
             fill="#34A853"
-            d="M16.0407269,18.0125889 C14.9509167,18.7163016 13.5660892,19.0909091 
-                12,19.0909091 C8.86648613,19.0909091 6.21911939,17.076871 5.27698177,14.2678769 
-                L1.23746264,17.3349879 C3.19279051,21.2936293 7.26500293,24 12,24 C14.9328362,24 
+            d="M16.0407269,18.0125889 C14.9509167,18.7163016 13.5660892,19.0909091
+                12,19.0909091 C8.86648613,19.0909091 6.21911939,17.076871 5.27698177,14.2678769
+                L1.23746264,17.3349879 C3.19279051,21.2936293 7.26500293,24 12,24 C14.9328362,24
                 17.7353462,22.9573905 19.834192,20.9995801 L16.0407269,18.0125889 Z"
           />
           <path
             fill="#4A90E2"
-            d="M19.834192,20.9995801 C22.0291676,18.9520994 23.4545455,15.903663 
-                23.4545455,12 C23.4545455,11.2909091 23.3454545,10.5272727 23.1818182,9.81818182 
-                L12,9.81818182 L12,14.4545455 L18.4363636,14.4545455 C18.1187732,16.013626 
+            d="M19.834192,20.9995801 C22.0291676,18.9520994 23.4545455,15.903663
+                23.4545455,12 C23.4545455,11.2909091 23.3454545,10.5272727 23.1818182,9.81818182
+                L12,9.81818182 L12,14.4545455 L18.4363636,14.4545455 C18.1187732,16.013626
                 17.2662994,17.2212117 16.0407269,18.0125889 L19.834192,20.9995801 Z"
           />
           <path
             fill="#FBBC05"
-            d="M5.27698177,14.2678769 C5.03832634,13.556323 4.90909091,12.7937589 4.90909091,12 
-                C4.90909091,11.2182781 5.03443647,10.4668121 5.26620003,9.76452941 
-                L1.23999023,6.65002441 C0.43658717,8.26043162 0,10.0753848 0,12 C0,13.9195484 
+            d="M5.27698177,14.2678769 C5.03832634,13.556323 4.90909091,12.7937589 4.90909091,12
+                C4.90909091,11.2182781 5.03443647,10.4668121 5.26620003,9.76452941
+                L1.23999023,6.65002441 C0.43658717,8.26043162 0,10.0753848 0,12 C0,13.9195484
                 0.444780743,15.7301709 1.23746264,17.3349879 L5.27698177,14.2678769 Z"
           />
         </svg>
@@ -599,11 +704,11 @@
             <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2" />
 
             <path
-              d="M20.188 10.9343C20.5762 11.4056 20.7703 11.6412 20.7703 
-                  12C20.7703 12.3588 20.5762 12.5944 20.188 13.0657C18.7679 
-                  14.7899 15.6357 18 12 18C8.36427 18 5.23206 14.7899 3.81197 
-                  13.0657C3.42381 12.5944 3.22973 12.3588 3.22973 12C3.22973 
-                  11.6412 3.42381 11.4056 3.81197 10.9343C5.23206 9.21014 
+              d="M20.188 10.9343C20.5762 11.4056 20.7703 11.6412 20.7703
+                  12C20.7703 12.3588 20.5762 12.5944 20.188 13.0657C18.7679
+                  14.7899 15.6357 18 12 18C8.36427 18 5.23206 14.7899 3.81197
+                  13.0657C3.42381 12.5944 3.22973 12.3588 3.22973 12C3.22973
+                  11.6412 3.42381 11.4056 3.81197 10.9343C5.23206 9.21014
                   8.36427 6 12 6C15.6357 6 18.7679 9.21014 20.188 10.9343Z"
               stroke="currentColor"
               stroke-width="2"
@@ -614,11 +719,11 @@
             <path
               fill-rule="evenodd"
               clip-rule="evenodd"
-              d="M15.9202 12.7988C15.9725 12.5407 16 12.2736 16 12C16 9.79086 
-                  14.2091 8 12 8C11.7264 8 11.4593 8.02746 11.2012 8.07977L15.9202 
-                  12.7988ZM8.66676 9.78799C8.24547 10.4216 8 11.1821 8 12C8 14.2091 
-                  9.79086 16 12 16C12.8179 16 13.5784 15.7545 14.212 15.3332L12.7381 
-                  13.8594C12.5098 13.9501 12.2607 14 12 14C10.8954 14 10 13.1046 
+              d="M15.9202 12.7988C15.9725 12.5407 16 12.2736 16 12C16 9.79086
+                  14.2091 8 12 8C11.7264 8 11.4593 8.02746 11.2012 8.07977L15.9202
+                  12.7988ZM8.66676 9.78799C8.24547 10.4216 8 11.1821 8 12C8 14.2091
+                  9.79086 16 12 16C12.8179 16 13.5784 15.7545 14.212 15.3332L12.7381
+                  13.8594C12.5098 13.9501 12.2607 14 12 14C10.8954 14 10 13.1046
                   10 12C10 11.7393 10.0499 11.4902 10.1406 11.2619L8.66676 9.78799Z"
               fill="currentColor"
             />
@@ -626,28 +731,28 @@
             <path
               fill-rule="evenodd"
               clip-rule="evenodd"
-              d="M16.5191 17.6405L15.0499 16.1712C14.0776 16.6805 13.0477 17 12 
-                  17C10.4742 17 8.98616 16.3224 7.65914 15.3677C6.34002 14.4186 5.26409 
-                  13.2558 4.58386 12.43C4.48409 12.3088 4.40958 12.2182 4.34785 
-                  12.1385C4.29899 12.0754 4.26786 12.0315 4.24756 12C4.26786 11.9685 
-                  4.29899 11.9246 4.34785 11.8615C4.40958 11.7818 4.48409 11.6912 4.58386 
-                  11.57C5.24928 10.7622 6.29335 9.63187 7.57331 8.69463L6.14458 
-                  7.2659C4.79643 8.29616 3.72247 9.47005 3.04009 10.2985C3.01651 
-                  10.3272 2.99192 10.3566 2.96662 10.3869L2.96661 10.3869C2.65318 
-                  10.7624 2.22974 11.2696 2.22974 12C2.22974 12.7304 2.65318 13.2376 
-                  2.9666 13.6131L2.96682 13.6133C2.99205 13.6435 3.01657 13.6729 3.04009 
-                  13.7015C3.77996 14.5998 4.98018 15.9041 6.49111 16.9912C7.99416 18.0725 
-                  9.89008 19 12 19C13.67 19 15.206 18.419 16.5191 17.6405ZM8.80682 
-                  5.6855C9.79062 5.26871 10.8643 5 12 5C14.1099 5 16.0059 5.92747 
-                  17.5089 7.00885C19.0198 8.0959 20.2201 9.40025 20.9599 10.2985C20.9835 
-                  10.3272 21.0081 10.3566 21.0334 10.3869L21.0334 10.3869C21.3468 10.7624 
-                  21.7703 11.2696 21.7703 12C21.7703 12.7304 21.3468 13.2376 21.0334 
-                  13.6131C21.0081 13.6434 20.9835 13.6728 20.9599 13.7015C20.4733 14.2923 
-                  19.7874 15.0589 18.945 15.8237L17.529 14.4077C18.3089 13.708 18.9539 
-                  12.9912 19.4162 12.43C19.5159 12.3088 19.5904 12.2182 19.6522 
-                  12.1385C19.701 12.0754 19.7322 12.0315 19.7525 12C19.7322 11.9685 
-                  19.701 11.9246 19.6522 11.8615C19.5904 11.7818 19.5159 11.6912 19.4162 
-                  11.57C18.7359 10.7442 17.66 9.58138 16.3409 8.63233C15.0139 7.6776 
+              d="M16.5191 17.6405L15.0499 16.1712C14.0776 16.6805 13.0477 17 12
+                  17C10.4742 17 8.98616 16.3224 7.65914 15.3677C6.34002 14.4186 5.26409
+                  13.2558 4.58386 12.43C4.48409 12.3088 4.40958 12.2182 4.34785
+                  12.1385C4.29899 12.0754 4.26786 12.0315 4.24756 12C4.26786 11.9685
+                  4.29899 11.9246 4.34785 11.8615C4.40958 11.7818 4.48409 11.6912 4.58386
+                  11.57C5.24928 10.7622 6.29335 9.63187 7.57331 8.69463L6.14458
+                  7.2659C4.79643 8.29616 3.72247 9.47005 3.04009 10.2985C3.01651
+                  10.3272 2.99192 10.3566 2.96662 10.3869L2.96661 10.3869C2.65318
+                  10.7624 2.22974 11.2696 2.22974 12C2.22974 12.7304 2.65318 13.2376
+                  2.9666 13.6131L2.96682 13.6133C2.99205 13.6435 3.01657 13.6729 3.04009
+                  13.7015C3.77996 14.5998 4.98018 15.9041 6.49111 16.9912C7.99416 18.0725
+                  9.89008 19 12 19C13.67 19 15.206 18.419 16.5191 17.6405ZM8.80682
+                  5.6855C9.79062 5.26871 10.8643 5 12 5C14.1099 5 16.0059 5.92747
+                  17.5089 7.00885C19.0198 8.0959 20.2201 9.40025 20.9599 10.2985C20.9835
+                  10.3272 21.0081 10.3566 21.0334 10.3869L21.0334 10.3869C21.3468 10.7624
+                  21.7703 11.2696 21.7703 12C21.7703 12.7304 21.3468 13.2376 21.0334
+                  13.6131C21.0081 13.6434 20.9835 13.6728 20.9599 13.7015C20.4733 14.2923
+                  19.7874 15.0589 18.945 15.8237L17.529 14.4077C18.3089 13.708 18.9539
+                  12.9912 19.4162 12.43C19.5159 12.3088 19.5904 12.2182 19.6522
+                  12.1385C19.701 12.0754 19.7322 12.0315 19.7525 12C19.7322 11.9685
+                  19.701 11.9246 19.6522 11.8615C19.5904 11.7818 19.5159 11.6912 19.4162
+                  11.57C18.7359 10.7442 17.66 9.58138 16.3409 8.63233C15.0139 7.6776
                   13.5258 7 12 7C11.449 7 10.9029 7.08837 10.3676 7.24624L8.80682 5.6855Z"
               fill="currentColor"
             />
@@ -870,11 +975,23 @@
       const app = createApp({
         setup: () => appConfig,
         template: appTemplate,
+        beforeMount: () => initialValidation(),
       });
 
       app.component("LoginComponent", {
-        setup: () => loginConfig,
+        emits: ["isLoggedIn"],
+        setup: (_, { emit }) => ({
+          userCredentials,
+          loginLoad,
+          showPass,
+          signInFn: () => signIn(emit),
+        }),
         template: loginTemplate,
+      });
+
+      app.component("MainComponent", {
+        setup: () => mainConfig,
+        template: mainTemplate,
       });
 
       app.component("ToDoItem", {
@@ -931,6 +1048,18 @@
         @apply opacity-0;
       }
 
+      /* Scale animation */
+      .scale-enter-active,
+      .scale-leave-active {
+        transition: all 0.5s ease;
+      }
+
+      .scale-enter-from,
+      .scale-leave-to {
+        opacity: 0;
+        transform: scale(0.9);
+      }
+
       body {
         @apply bg-white dark:bg-slate-800 text-white font-['Avenir_,_Helvetica_,_Arial_,sans_-_serif'];
         @apply p-8 pb-16 sm:p-8 sm:pt-12 transition duration-200 ease-linear;
@@ -942,6 +1071,11 @@
 
       .login_card {
         @apply max-w-lg mx-auto my-10 bg-white p-8 rounded-xl shadow-2xl dark:shadow shadow-slate-300;
+        @apply overflow-hidden flex flex-col justify-center items-center min-h-[20rem];
+      }
+
+      .login_contents {
+        @apply transition-all duration-300 ease-linear w-full;
       }
 
       .login_title {
@@ -1017,6 +1151,19 @@
 
       .signup_option a {
         @apply text-indigo-600 font-medium inline-flex space-x-1 items-center;
+      }
+
+      .login_loader {
+        @apply flex justify-center transition-all duration-100 ease-linear relative pointer-events-none;
+      }
+
+      .circle_loader {
+        @apply origin-[center_center] transition-all duration-500 fill-transparent stroke-[#1976D2];
+        @apply animate-[load-spin_2s_linear_infinite] align-middle absolute -top-[6.5rem];
+      }
+
+      .circle_loader circle {
+        @apply animate-[dash-spin_1.5s_ease-in-out_infinite];
       }
 
       header {
@@ -1178,6 +1325,39 @@
         + .theme_switcher_label
         .theme_switcher_ball {
         @apply translate-x-[22px];
+      }
+
+      @keyframes load-spin {
+        0% {
+          transform: rotate3d(0, 0, 1, 0deg);
+        }
+        25% {
+          transform: rotate3d(0, 0, 1, 90deg);
+        }
+        50% {
+          transform: rotate3d(0, 0, 1, 180deg);
+        }
+        75% {
+          transform: rotate3d(0, 0, 1, 270deg);
+        }
+        100% {
+          transform: rotate3d(0, 0, 1, 359deg);
+        }
+      }
+
+      @keyframes dash-spin {
+        0% {
+          stroke-dasharray: 1, 200;
+          stroke-dashoffset: 0;
+        }
+        50% {
+          stroke-dasharray: 89, 200;
+          stroke-dashoffset: -35px;
+        }
+        100% {
+          stroke-dasharray: 89, 200;
+          stroke-dashoffset: -124px;
+        }
       }
     </style>
   </body>
