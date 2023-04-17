@@ -109,6 +109,51 @@
     <script>
       tailwind.config = {
         darkMode: "class",
+        theme: {
+          extend: {
+            keyframes: {
+              load_spin: {
+                "0%": { transform: "rotate3d(0, 0, 1, 0deg)" },
+                "25%": { transform: "rotate3d(0, 0, 1, 90deg)" },
+                "50%": { transform: "rotate3d(0, 0, 1, 180deg)" },
+                "75%": { transform: "rotate3d(0, 0, 1, 270deg)" },
+                "100%": { transform: "rotate3d(0, 0, 1, 359deg)" },
+              },
+              dash_spin: {
+                "0%": {
+                  "stroke-dasharray": "1, 200",
+                  "stroke-dashoffset": "0",
+                },
+                "50%": {
+                  "stroke-dasharray": "89, 200",
+                  "stroke-dashoffset": "-35px",
+                },
+                "100%": {
+                  "stroke-dasharray": "89, 200",
+                  "stroke-dashoffset": "-124px",
+                },
+              },
+              "load-pulse": {
+                "0%": {
+                  transform: "scale(0)",
+                  opacity: "0",
+                },
+                "50%": {
+                  transform: "scale(1)",
+                  opacity: "1",
+                },
+                "100%": {
+                  transform: "scale(0)",
+                  opacity: "0",
+                },
+              },
+            },
+            animation: {
+              "load-spin": "load_spin 2s linear infinite",
+              "dash-spin": "dash_spin 1.5s ease-in-out infinite",
+            },
+          },
+        },
       };
     </script>
 
@@ -153,6 +198,7 @@
       const theme = computed(() => userTheme === "dark");
       const accessData = computed(() => search === "?access-data");
 
+      const activeComponent = ref("LoadScreenComponent");
       const userCredentials = ref({
         email: "",
         password: "",
@@ -195,7 +241,8 @@
           localStorage.setItem("loginToken", token);
 
           showToast(...notifyCases.loggedin);
-          emit("isLoggedIn");
+          emit("isLoggedIn"); // não é mais necessário
+          activeComponent.value = "MainComponent";
           setTimeout(() => (loginLoad.value = false), 1000);
         } catch (err) {
           showToast(...notifyCases.loginerr);
@@ -220,10 +267,16 @@
             await getTodos();
             isLoggedIn.value = true;
             showToast(...notifyCases.loggedin);
+            queueMicrotask(() => (activeComponent.value = "MainComponent"));
           } catch (err) {
             showToast(...notifyCases.dologin);
+            queueMicrotask(() => (activeComponent.value = "LoginComponent"));
           }
+
+          return;
         }
+
+        activeComponent.value = "LoginComponent";
       };
 
       const setTab = (str) => {
@@ -408,8 +461,7 @@
         <main>
           <Transition name="scale" mode="out-in">
             <KeepAlive>
-              <LoginComponent v-if="!isLoggedIn" @isLoggedIn="isLoggedIn = true" />
-              <MainComponent v-else />
+              <component :is="activeComponent" />
             </KeepAlive>
           </Transition>
 
@@ -419,7 +471,15 @@
         </main>
       `;
 
-      const appConfig = { isLoggedIn, notify, notifyProps };
+      const appConfig = { activeComponent, isLoggedIn, notify, notifyProps };
+
+      const loadScreenTemplate = /*html*/ `
+        <div class="dots_container">
+          <div class="dot" style="--anim-time: 0"></div>
+          <div class="dot" style="--anim-time: 300"></div>
+          <div class="dot" style="--anim-time: 600"></div>
+        </div>
+      `;
 
       const loginTemplate = /*html*/ `
         <div class="login_card">
@@ -978,6 +1038,8 @@
         beforeMount: () => initialValidation(),
       });
 
+      app.component("LoadScreenComponent", { template: loadScreenTemplate });
+
       app.component("LoginComponent", {
         emits: ["isLoggedIn"],
         setup: (_, { emit }) => ({
@@ -1067,6 +1129,16 @@
 
       main {
         @apply max-w-2xl mr-auto ml-auto;
+      }
+
+      .dots_container {
+        @apply w-full h-full fixed flex justify-center items-center left-0 top-0;
+      }
+
+      .dot {
+        @apply relative w-16 h-16 float-left mx-4 rounded-full scale-0;
+        @apply animate-[load-pulse_1000ms_ease_infinite_calc(var(--anim-time)_*_1ms)];
+        @apply bg-slate-300 dark:bg-slate-900;
       }
 
       .login_card {
@@ -1159,11 +1231,11 @@
 
       .circle_loader {
         @apply origin-[center_center] transition-all duration-500 fill-transparent stroke-[#1976D2];
-        @apply animate-[load-spin_2s_linear_infinite] align-middle absolute -top-[6.5rem];
+        @apply animate-load-spin align-middle absolute -top-[6.5rem];
       }
 
       .circle_loader circle {
-        @apply animate-[dash-spin_1.5s_ease-in-out_infinite];
+        @apply animate-dash-spin;
       }
 
       header {
@@ -1325,39 +1397,6 @@
         + .theme_switcher_label
         .theme_switcher_ball {
         @apply translate-x-[22px];
-      }
-
-      @keyframes load-spin {
-        0% {
-          transform: rotate3d(0, 0, 1, 0deg);
-        }
-        25% {
-          transform: rotate3d(0, 0, 1, 90deg);
-        }
-        50% {
-          transform: rotate3d(0, 0, 1, 180deg);
-        }
-        75% {
-          transform: rotate3d(0, 0, 1, 270deg);
-        }
-        100% {
-          transform: rotate3d(0, 0, 1, 359deg);
-        }
-      }
-
-      @keyframes dash-spin {
-        0% {
-          stroke-dasharray: 1, 200;
-          stroke-dashoffset: 0;
-        }
-        50% {
-          stroke-dasharray: 89, 200;
-          stroke-dashoffset: -35px;
-        }
-        100% {
-          stroke-dasharray: 89, 200;
-          stroke-dashoffset: -124px;
-        }
       }
     </style>
   </body>
