@@ -34,6 +34,7 @@
 - [x] make app a PWA
 - [x] implement a dark and light theme switcher
 - [ ] integrate with deskree backend
+- [ ] create flags option for todos
 - [ ] develop drag and drop todos (to organize by priority)
 - [ ] publish to play store / app store
 

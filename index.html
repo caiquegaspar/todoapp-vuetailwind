@@ -299,6 +299,8 @@
         return rules[filterTerm.value];
       };
 
+      const inputEnterEvent = () => (!editMode.value ? addTodo() : saveTodo());
+
       const addTodo = () => {
         if (newTodo.value) {
           todos.value.push({
@@ -317,9 +319,14 @@
         (todo.done = !todo.done), saveData(todo.done ? "done" : "undone")
       );
 
-      const removeTodo = (idx) => (
-        todos.value.splice(idx, 1), saveData("removed")
-      );
+      const removeTodo = (todo) => {
+        const found = todos.value.findIndex(
+          (el) => el.content === todo.content
+        );
+
+        todos.value.splice(found, 1);
+        saveData("removed");
+      };
 
       const setEditProps = (mode, target, val) => {
         editMode.value = mode;
@@ -327,8 +334,12 @@
         newTodo.value = val;
       };
 
-      const editTodo = (idx) => {
-        const target = todos.value.splice(idx, 1)[0];
+      const editTodo = (todo) => {
+        const found = todos.value.findIndex(
+          (el) => el.content === todo.content
+        );
+        const target = todos.value.splice(found, 1)[0];
+
         setEditProps(true, target, target.content);
       };
 
@@ -467,7 +478,9 @@
 
           <NotifyComponent v-model="notify" v-bind="notifyProps" />
 
-          <ThemeSwitcherComponent />
+          <ThemeSwitcherComponent
+            v-if="activeComponent !== 'LoadScreenComponent'"
+          />
         </main>
       `;
 
@@ -587,7 +600,7 @@
           <header>
             <div class="header_title">
               <ToDoIcon class="todo_icon" />
-              <h1>ToDo App</h1>
+              <h1>ToDo App{{ editMode }}</h1>
             </div>
 
             <div v-if="!accessData" class="header_tabs">
@@ -613,7 +626,8 @@
               name="newTodo"
               autocomplete="off"
               placeholder="New ToDo"
-              @keyup.enter="!editMode ? addTodo : saveTodo"
+              @keydown.enter.prevent
+              @keyup.enter="inputEnterEvent"
             />
 
             <button v-if="!editMode" type="submit">Add</button>
@@ -662,10 +676,10 @@
                 <ToDoItem
                   v-for="(todo, idx) in filteredTodos()"
                   :todo="todo"
-                  :key="idx"
+                  :key="todo.content + ', ' + idx"
                   @doneTodo="doneTodo"
-                  @removeTodo="removeTodo(idx)"
-                  @editTodo="editTodo(idx)"
+                  @removeTodo="removeTodo(todo)"
+                  @editTodo="editTodo(todo)"
                 />
               </ul>
             </div>
@@ -685,6 +699,7 @@
         tabPos,
         setTab,
         filteredTodos,
+        inputEnterEvent,
         addTodo,
         doneTodo,
         removeTodo,
