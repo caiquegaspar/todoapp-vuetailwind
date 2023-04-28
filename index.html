@@ -199,9 +199,16 @@
       const accessData = computed(() => search === "?access-data");
 
       const activeComponent = ref("LoadScreenComponent");
-      const userCredentials = ref({
+      const activeSignStep = ref("login");
+      const userLoginCredentials = ref({
         email: "",
         password: "",
+      });
+      const userSignUpCredentials = ref({
+        name: "",
+        email: "",
+        password: "",
+        repeated_password: "",
       });
       const isLoggedIn = ref(false);
       const loginLoad = ref(false);
@@ -221,7 +228,7 @@
 
       const signUp = async () => {};
 
-      const signIn = async (emit) => {
+      const signIn = async () => {
         loginLoad.value = true;
 
         try {
@@ -231,8 +238,8 @@
             data: {
               // email: "caiqsgaspar@gmail.com",
               // password: "123@5678",
-              email: userCredentials.value.email,
-              password: userCredentials.value.password,
+              email: userLoginCredentials.value.email,
+              password: userLoginCredentials.value.password,
             },
           });
           const signInResult = signInResponse.data;
@@ -241,7 +248,6 @@
           localStorage.setItem("loginToken", token);
 
           showToast(...notifyCases.loggedin);
-          emit("isLoggedIn"); // não é mais necessário
           activeComponent.value = "MainComponent";
           setTimeout(() => (loginLoad.value = false), 1000);
         } catch (err) {
@@ -262,6 +268,8 @@
       };
 
       const initialValidation = async () => {
+        // activeComponent.value = "MainComponent";
+        // return;
         if (token.value) {
           try {
             await getTodos();
@@ -484,7 +492,7 @@
         </main>
       `;
 
-      const appConfig = { activeComponent, isLoggedIn, notify, notifyProps };
+      const appConfig = { activeComponent, notify, notifyProps };
 
       const loadScreenTemplate = /*html*/ `
         <div class="dots_container">
@@ -498,83 +506,21 @@
         <div class="login_card">
           <div
             class="login_contents"
-            :class="loginLoad ? 'max-h-0 opacity-0 pointer-events-none' : 'max-h-screen opacity-1 pointer-events-auto'"
+            :class="[
+              loginLoad ? 'max-h-0 opacity-0 pointer-events-none' : 'max-h-screen opacity-1 pointer-events-auto',
+              activeSignStep === 'login' ? 'fit_to_sm_form' : 'fit_to_lg_form'
+              ]"
           >
-            <div class="login_title">
-              <h1>Login</h1>
-              <p>Hi, Welcome back 👋</p>
-            </div>
+            <LoginFormComponent
+              :class="{active_form: activeSignStep === 'login'}"
+              @signIn="signIn"
+              @goToregister="activeSignStep = 'signup'"
+            />
 
-            <div v-if="false" class="social_login">
-              <button class="social_login_btn" @click="loginLoad = !loginLoad">
-                <GoogleIcon width="20" />
-                <span>Login with Google</span>
-              </button>
-            </div>
-
-            <div v-if="false" class="login_separator">
-              <span>Or</span>
-            </div>
-
-            <form class="login_form" @submit.prevent="signInFn">
-              <label>
-                <p class="login_input_title">Email address</p>
-                <input
-                  v-model="userCredentials.email"
-                  id="email"
-                  name="email"
-                  type="email"
-                  class="login_input"
-                  placeholder="Enter email address"
-                  required
-                />
-              </label>
-
-              <label>
-                <p class="login_input_title">Password</p>
-
-                <div class="relative">
-                  <label>
-                    <input
-                      v-model="userCredentials.password"
-                      id="password"
-                      name="password"
-                      :type="showPass ? 'text' : 'password'"
-                      autocomplete="on"
-                      class="login_input"
-                      placeholder="Enter your password"
-                      required
-                    />
-                  </label>
-
-                  <div class="see_pass_btn">
-                    <SeePassIcon width="25" v-model="showPass" />
-                  </div>
-                </div>
-              </label>
-
-              <div class="login_extra_options">
-                <label class="remember_option">
-                  <input type="checkbox" />
-                  <span>Remember me</span>
-                </label>
-
-                <a href="#" class="reset_option"> Forgot Password? </a>
-              </div>
-
-              <button class="login_btn">
-                <LoginIcon width="25" />
-                <span>Login</span>
-              </button>
-
-              <p class="signup_option">
-                Not registered yet?
-                <a href="#">
-                  <span>Register now </span>
-                  <OpenLinkIcon width="20" />
-                </a>
-              </p>
-            </form>
+            <SignUpFormComponent
+              :class="{active_form: activeSignStep === 'signup'}"
+              @backToLogin="activeSignStep = 'login'"
+            />
           </div>
 
           <div
@@ -594,6 +540,195 @@
           </div>
         </div>
       `;
+
+      const loginConfig = {
+        activeSignStep,
+        loginLoad,
+        signIn,
+      };
+
+      const loginFormTemplate = /*html*/ `
+        <div class="login_form_container">
+          <div class="login_title">
+            <h1>Login</h1>
+            <p>Hi, Welcome back 👋</p>
+          </div>
+
+          <div v-if="false" class="social_login">
+            <button class="social_login_btn">
+              <GoogleIcon width="20" />
+              <span>Login with Google</span>
+            </button>
+          </div>
+
+          <div v-if="false" class="login_separator">
+            <span>Or</span>
+          </div>
+
+          <form class="login_form" @submit.prevent="$emit('signIn')">
+            <label>
+              <p class="login_input_title">Email address</p>
+              <input
+                v-model="userLoginCredentials.email"
+                id="login_email"
+                name="email"
+                type="email"
+                class="login_input"
+                placeholder="Enter email address"
+                required
+              />
+            </label>
+
+            <label>
+              <p class="login_input_title">Password</p>
+
+              <div class="relative">
+                <label>
+                  <input
+                    v-model="userLoginCredentials.password"
+                    id="login_password"
+                    name="password"
+                    :type="showPass ? 'text' : 'password'"
+                    autocomplete="on"
+                    class="login_input"
+                    placeholder="Enter your password"
+                    required
+                  />
+                </label>
+
+                <div class="see_pass_btn">
+                  <SeePassIcon width="25" v-model="showPass" />
+                </div>
+              </div>
+            </label>
+
+            <div class="login_extra_options">
+              <label class="remember_option">
+                <input type="checkbox" />
+                <span>Remember me</span>
+              </label>
+
+              <a href="#" class="reset_option"> Forgot Password? </a>
+            </div>
+
+            <button type="submit" class="login_btn">
+              <LoginIcon width="25" />
+              <span>Login</span>
+            </button>
+
+            <p class="signup_option">
+              Not registered yet?
+              <button type="button" @click="$emit('goToregister')">
+                <span>Register now </span>
+                <RegisterIcon width="20" />
+              </button>
+            </p>
+          </form>
+        </div>
+      `;
+
+      const loginFormConfig = {
+        userLoginCredentials,
+        showPass,
+      };
+
+      const signUpFormTemplate = /*html*/ `
+        <div class="signup_form_container">
+          <button class="back_btn" type="button" @click="$emit('backToLogin')">
+            <BackIcon width="25" />
+            <span>Return to login page</span>
+          </button>
+
+          <div class="signup_title">
+            <h1>Sign up</h1>
+            <p>Create your free account</p>
+          </div>
+
+          <form class="signup_form" @submit.prevent="$emit('signIn')">
+            <label>
+              <p class="signup_input_title">Full name</p>
+              <input
+                v-model="userSignUpCredentials.name"
+                id="signup_name"
+                name="email"
+                type="email"
+                class="signup_input"
+                placeholder="Enter email address"
+                required
+              />
+            </label>
+
+            <label>
+              <p class="signup_input_title">Email address</p>
+              <input
+                v-model="userSignUpCredentials.email"
+                id="signup_email"
+                name="email"
+                type="email"
+                class="signup_input"
+                placeholder="Enter email address"
+                required
+              />
+            </label>
+
+            <label>
+              <p class="signup_input_title">Password</p>
+
+              <div class="relative">
+                <label>
+                  <input
+                    v-model="userSignUpCredentials.password"
+                    id="signup_password"
+                    name="password"
+                    :type="showPass ? 'text' : 'password'"
+                    autocomplete="on"
+                    class="signup_input"
+                    placeholder="Enter your password"
+                    required
+                  />
+                </label>
+
+                <div class="see_pass_btn">
+                  <SeePassIcon width="25" v-model="showPass" />
+                </div>
+              </div>
+            </label>
+
+            <label>
+              <p class="signup_input_title">Repeat password</p>
+
+              <div class="relative">
+                <label>
+                  <input
+                    v-model="userSignUpCredentials.repeated_password"
+                    id="signup_repeat_password"
+                    name="password"
+                    :type="showPass ? 'text' : 'password'"
+                    autocomplete="on"
+                    class="signup_input"
+                    placeholder="Enter your password"
+                    required
+                  />
+                </label>
+
+                <div class="see_pass_btn">
+                  <SeePassIcon width="25" v-model="showPass" />
+                </div>
+              </div>
+            </label>
+
+            <button type="submit" class="signup_btn">
+              <RegisterIcon width="22" />
+              <span>Sign Up</span>
+            </button>
+          </form>
+        </div>
+      `;
+
+      const signUpFormConfig = {
+        userSignUpCredentials,
+        showPass,
+      };
 
       const mainTemplate = /*html*/ `
         <div>
@@ -852,17 +987,58 @@
         </svg>
       `;
 
-      const openLinkIcon = /*html*/ `
-        <svg
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-          stroke-width="2"
-        >
+      const registerIcon = /*html*/ `
+        <svg viewBox="0 0 20 20">
+          <g
+            id="Page-1"
+            stroke="none"
+            stroke-width="1"
+            fill="none"
+            fill-rule="evenodd"
+          >
+            <g
+              transform="translate(-60.000000, -2239.000000)"
+              fill="currentColor"
+            >
+              <g transform="translate(56.000000, 160.000000)">
+                <path
+                  d="M24.0001371,2083 C24.0001371,2083.552 23.5521371,2084 23.0001371,2084
+                    L21.0001371,2084 L21.0001371,2086 C21.0001371,2086.552 20.5521371,2087
+                    20.0001371,2087 C19.4481371,2087 19.0001371,2086.552 19.0001371,2086
+                    L19.0001371,2084 L17.0001371,2084 C16.4481371,2084 16.0001371,2083.552 16.0001371,2083
+                    C16.0001371,2082.448 16.4481371,2082 17.0001371,2082 L19.0001371,2082
+                    L19.0001371,2080 C19.0001371,2079.448 19.4481371,2079 20.0001371,2079
+                    C20.5521371,2079 21.0001371,2079.448 21.0001371,2080 L21.0001371,2082
+                    L23.0001371,2082 C23.5521371,2082 24.0001371,2082.448 24.0001371,2083
+                    M15.7401371,2097 L7.6121371,2097 C6.8171371,2097 6.3141371,2096.099
+                    6.7721371,2095.449 C7.8511371,2093.92 9.6251371,2092.916 11.6331371,2092.902
+                    C11.6471371,2092.902 11.6611371,2092.906 11.6751371,2092.906 C11.6901371,2092.906
+                    11.7031371,2092.902 11.7181371,2092.902 C13.7271371,2092.916 15.5021371,2093.919
+                    16.5801371,2095.449 C17.0381371,2096.099 16.5361371,2097 15.7401371,2097
+                    M11.6751371,2086.906 C12.7781371,2086.906 13.6751371,2087.803 13.6751371,2088.906
+                    C13.6751371,2089.995 12.8001371,2090.879 11.7181371,2090.902 C11.7031371,2090.902
+                    11.6901371,2090.9 11.6751371,2090.9 C11.6611371,2090.9 11.6471371,2090.902 11.6331371,2090.902
+                    C10.5501371,2090.879 9.6751371,2089.995 9.6751371,2088.906 C9.6751371,2087.803 10.5731371,2086.906
+                    11.6751371,2086.906 M14.7011371,2091.495 C15.5311371,2090.527 15.9311371,2089.18
+                    15.5001371,2087.724 C15.1031371,2086.38 13.9731371,2085.319 12.6061371,2085.011
+                    C9.9921371,2084.422 7.6751371,2086.393 7.6751371,2088.906 C7.6751371,2089.899
+                    8.0501371,2090.796 8.6491371,2091.495 C6.5201371,2092.365 4.8481371,2094.181
+                    4.1011371,2096.4 C3.6711371,2097.68 4.6691371,2099 6.0191371,2099 L17.3311371,2099
+                    C18.6811371,2099 19.6801371,2097.68 19.2491371,2096.4 C18.5021371,2094.181
+                    16.8311371,2092.365 14.7011371,2091.495"
+                />
+              </g>
+            </g>
+          </g>
+        </svg>
+      `;
+
+      const backIcon = /*html*/ `
+        <svg fill="#000000" viewBox="0 0 52 52">
           <path
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+            d="M48.6,23H15.4c-0.9,0-1.3-1.1-0.7-1.7l9.6-9.6c0.6-0.6,0.6-1.5,0-2.1l-2.2-2.2c-0.6-0.6-1.5-0.6-2.1,0 
+                L2.5,25c-0.6,0.6-0.6,1.5,0,2.1L20,44.6c0.6,0.6,1.5,0.6,2.1,0l2.1-2.1c0.6-0.6,0.6-1.5,0-2.1l-9.6-9.6C14,30.1,14.4,29,15.3,29 
+                h33.2c0.8,0,1.5-0.6,1.5-1.4v-3C50,23.8,49.4,23,48.6,23z"
           />
         </svg>
       `;
@@ -1056,14 +1232,18 @@
       app.component("LoadScreenComponent", { template: loadScreenTemplate });
 
       app.component("LoginComponent", {
-        emits: ["isLoggedIn"],
-        setup: (_, { emit }) => ({
-          userCredentials,
-          loginLoad,
-          showPass,
-          signInFn: () => signIn(emit),
-        }),
+        setup: () => loginConfig,
         template: loginTemplate,
+      });
+
+      app.component("LoginFormComponent", {
+        setup: () => loginFormConfig,
+        template: loginFormTemplate,
+      });
+
+      app.component("SignUpFormComponent", {
+        setup: () => signUpFormConfig,
+        template: signUpFormTemplate,
       });
 
       app.component("MainComponent", {
@@ -1084,7 +1264,8 @@
       });
 
       app.component("LoginIcon", { template: loginIcon });
-      app.component("OpenLinkIcon", { template: openLinkIcon });
+      app.component("RegisterIcon", { template: registerIcon });
+      app.component("BackIcon", { template: backIcon });
       app.component("ToDoIcon", { template: toDoIcon });
       app.component("CopyIcon", { template: copyIcon });
       app.component("DeleteIcon", { template: deleteIcon });
@@ -1128,13 +1309,12 @@
       /* Scale animation */
       .scale-enter-active,
       .scale-leave-active {
-        transition: all 0.5s ease;
+        @apply transition-all duration-500 ease-linear;
       }
 
       .scale-enter-from,
       .scale-leave-to {
-        opacity: 0;
-        transform: scale(0.9);
+        @apply opacity-0 scale-[0.9];
       }
 
       body {
@@ -1158,18 +1338,46 @@
 
       .login_card {
         @apply max-w-lg mx-auto my-10 bg-white p-8 rounded-xl shadow-2xl dark:shadow shadow-slate-300;
-        @apply overflow-hidden flex flex-col justify-center items-center min-h-[20rem];
+        @apply overflow-hidden min-h-[20rem];
       }
 
       .login_contents {
-        @apply transition-all duration-300 ease-linear w-full;
+        @apply flex items-center relative transition-all duration-200 ease-linear delay-200;
       }
 
-      .login_title {
-        @apply flex flex-col gap-3 text-slate-700;
+      .fit_to_sm_form {
+        @apply h-[30rem];
       }
 
-      .login_title h1 {
+      .fit_to_lg_form {
+        @apply h-[40rem];
+      }
+
+      .login_form_container {
+        @apply absolute w-full opacity-100 transition-all duration-300;
+        @apply right-[32rem];
+      }
+
+      .signup_form_container {
+        @apply absolute w-full opacity-100 transition-all duration-300;
+        @apply -right-[32rem];
+      }
+
+      .fit_to_sm_form .login_form_container,
+      .fit_to_lg_form .signup_form_container {
+        @apply delay-500;
+      }
+
+      .active_form {
+        @apply opacity-100 right-0;
+      }
+
+      .login_title,
+      .signup_title {
+        @apply flex flex-col gap-3 mt-1 text-slate-700 w-full;
+      }
+
+      :is(.login_title, .signup_title) h1 {
         @apply text-4xl font-medium;
       }
 
@@ -1192,15 +1400,18 @@
         @apply -mt-1 bg-white px-5 absolute;
       }
 
-      .login_form {
-        @apply flex flex-col gap-5 my-8;
+      .login_form,
+      .signup_form {
+        @apply flex flex-col gap-5 mt-8;
       }
 
-      .login_input_title {
+      .login_input_title,
+      .signup_input_title {
         @apply font-medium text-slate-700 pb-2;
       }
 
-      .login_input {
+      .login_input,
+      .signup_input {
         @apply w-full py-3 border border-slate-200 rounded-lg px-3 focus:outline-none;
         @apply focus:border-slate-500 hover:shadow text-slate-700;
       }
@@ -1226,18 +1437,25 @@
         @apply font-medium text-indigo-600;
       }
 
-      .login_btn {
+      .login_btn,
+      .signup_btn {
         @apply w-full py-3 font-medium text-white bg-indigo-600 hover:bg-indigo-500;
         @apply rounded-lg border-indigo-500 hover:shadow inline-flex space-x-2 items-center;
-        @apply justify-center;
+        @apply justify-center mt-1;
       }
 
       .signup_option {
         @apply text-center text-slate-700;
       }
 
-      .signup_option a {
-        @apply text-indigo-600 font-medium inline-flex space-x-1 items-center;
+      .signup_option button {
+        @apply text-indigo-600 font-medium inline-flex space-x-2 items-center;
+      }
+
+      .back_btn {
+        @apply p-3 mb-2 font-medium text-black hover:bg-slate-100 transition duration-300;
+        @apply rounded-full border-indigo-500 hover:shadow inline-flex space-x-2 items-center;
+        @apply justify-center;
       }
 
       .login_loader {
