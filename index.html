@@ -171,12 +171,223 @@
     <script>
       "use strict";
 
-      const { createApp, ref, computed } = Vue;
+      const { computed, createApp, ref } = Vue;
 
       class TodoModel {
         done = false;
         content = "";
         flag = null;
+      }
+
+      /**
+       * Generates a draggable area.
+       * @class
+       */
+      class DraggableArea {
+        itemsArea;
+        AreaPos;
+        itemsList;
+        itemArea;
+
+        activeEl;
+        orderAttr;
+
+        isDragging;
+
+        /**
+         * @description This class converts a HTML ul list element in a draggable list (structure based on ul > multiple li).
+         * @summary Generates a draggable area.
+         * @constructor
+         * @author Caíque Gaspar <caiquegaspar.pages.dev>
+         * @param {string} element - The target HTML ul element identifier
+         * @param {string} [anchor] - The identifier of the specific HTML element that drags the li item
+         * @return {void}
+         */
+        constructor(element, anchor) {
+          this.itemsArea = document.querySelector(element);
+          this.itemsList = this.itemsArea.querySelectorAll("li");
+          this.itemArea = this.itemsArea.offsetHeight / this.itemsList.length;
+
+          const { left, top } = this.itemsArea.getBoundingClientRect();
+
+          this.AreaPos = { left, top };
+
+          this.itemsList.forEach((item, idx) => {
+            const anchorElem = anchor ? item.querySelector(anchor) : item;
+
+            item.setAttribute("start-order", idx);
+            item.setAttribute("order", idx);
+
+            anchorElem.onpointerdown = (e) => this.dragItem(e, idx);
+          });
+
+          this.isDragging = false;
+        }
+
+        setDraggableItem(item) {
+          return {
+            self: item,
+            selfArea: this.itemArea,
+            selfOrder: Number(item.getAttribute("order")),
+
+            parentPos: this.AreaPos,
+            posCenter: { left: null, top: null },
+
+            getSelfCoodinates() {
+              const { parentPos, selfArea, self } = this;
+              const topCoordinate =
+                parentPos.top + this.getOrder() * selfArea - window.scrollY;
+
+              return {
+                left: parentPos.left,
+                top: topCoordinate,
+                bottom: topCoordinate + self.offsetHeight,
+                translate:
+                  this.getOrder() * selfArea - this.getStartOrder() * selfArea,
+              };
+            },
+
+            previousOrder() {
+              return this.selfOrder - 1;
+            },
+
+            nextOrder() {
+              return this.selfOrder + 1;
+            },
+
+            currentPosY(e) {
+              const { top, translate } = this.getSelfCoodinates();
+
+              return e.clientY - top - this.posCenter.top + translate;
+            },
+
+            currentPosX(e) {
+              const { left } = this.getSelfCoodinates();
+
+              return e.clientX - left - this.posCenter.left;
+            },
+
+            getStartOrder() {
+              return this.self.getAttribute("start-order");
+            },
+
+            getOrder() {
+              return this.self.getAttribute("order");
+            },
+
+            setOrder(num) {
+              this.self.setAttribute("order", num);
+            },
+
+            moveElem(posX, posY) {
+              this.self.style.transform = `translate(${posX}px, ${posY}px)`;
+              this.self.style.zIndex = "1000";
+            },
+
+            posByOrder() {
+              const { translate } = this.getSelfCoodinates();
+
+              this.self.style.transform = `translate(0px, ${translate}px)`;
+              this.self.style.zIndex = "0";
+            },
+
+            select() {
+              this.self.setAttribute("selected", "yes");
+            },
+
+            unselect() {
+              this.self.removeAttribute("selected");
+            },
+
+            incrementOrder() {
+              ++this.selfOrder;
+            },
+
+            decrementOrder() {
+              --this.selfOrder;
+            },
+
+            previous() {
+              return {
+                ...this,
+                self: document.querySelector(
+                  `[order="${this.previousOrder()}"]`
+                ),
+                previous: null,
+                next: null,
+              };
+            },
+
+            next() {
+              return {
+                ...this,
+                self: document.querySelector(`[order="${this.nextOrder()}"]`),
+                previous: null,
+                next: null,
+              };
+            },
+          };
+        }
+
+        dragItem(e, id) {
+          this.isDragging = true;
+
+          const item = this.itemsArea.querySelector(`[start-order="${id}"]`);
+
+          this.activeEl = this.setDraggableItem(item);
+          this.orderAttr = this.activeEl.getOrder();
+
+          this.activeEl.posCenter = {
+            left: e.clientX - this.AreaPos.left,
+            top: e.clientY - this.activeEl.getSelfCoodinates().top,
+          };
+
+          this.activeEl.select();
+          this.registerEvents();
+        }
+
+        registerEvents() {
+          window.onpointermove = (e) => {
+            if (!this.isDragging) return;
+
+            let previousItem = this.activeEl.previous();
+            let nextItem = this.activeEl.next();
+
+            const posY = this.activeEl.currentPosY(e);
+            const posX = this.activeEl.currentPosX(e);
+
+            if (nextItem.self && e.clientY > nextItem.getSelfCoodinates().top) {
+              this.activeEl.incrementOrder();
+
+              nextItem.setOrder(this.activeEl.previousOrder());
+              this.activeEl.setOrder(this.activeEl.selfOrder);
+
+              nextItem.posByOrder();
+            } else if (
+              previousItem.self &&
+              e.clientY < previousItem.getSelfCoodinates().bottom
+            ) {
+              this.activeEl.decrementOrder();
+
+              previousItem.setOrder(this.activeEl.nextOrder());
+              this.activeEl.setOrder(this.activeEl.selfOrder);
+
+              previousItem.posByOrder();
+            }
+
+            this.activeEl.moveElem(posX, posY);
+          };
+
+          window.onpointerup = () => {
+            this.activeEl.unselect();
+
+            this.itemsList.forEach((item) =>
+              this.setDraggableItem(item).posByOrder()
+            );
+
+            this.isDragging = false;
+          };
+        }
       }
 
       const { search } = window.location;
@@ -242,7 +453,6 @@
       const notifyProps = ref(staticNotifyProps);
       const notifyItems = ref([]);
       const showPass = ref(false);
-      const isMouseDown = ref(false);
 
       const signUp = async () => {};
 
@@ -291,7 +501,9 @@
         if (token.value) {
           try {
             await getTodos();
+
             isLoggedIn.value = true;
+
             showToast(...notifyCases.loggedin);
             queueMicrotask(() => (activeComponent.value = "MainComponent"));
           } catch (err) {
@@ -303,6 +515,15 @@
         }
 
         activeComponent.value = "LoginComponent";
+      };
+
+      const onMountedConfig = () => {
+        window.scrollTo({ top: 0, behavior: "smooth" });
+
+        setTimeout(
+          () => new DraggableArea(".todo_list", ".todo_dragndrop"),
+          500
+        );
       };
 
       const setTab = (str) => {
@@ -390,166 +611,6 @@
         localStorage.setItem("todos", JSON.stringify(todos.value));
 
         showToast(...notifyCases[action]);
-      };
-
-      const moveTodo = (order) => {
-        isMouseDown.value = true;
-
-        const todoList = document.querySelector(".todo_list");
-        const todoArea = todoList.offsetHeight / todos.value.length;
-
-        const dragIcon = document.querySelector(".todo_dragndrop");
-        const iconMidY = dragIcon.offsetHeight / 2;
-        const iconMidX = (dragIcon.offsetWidth + 4) / 2;
-
-        const getTodo = (order) => {
-          const todoItem = document.querySelector(`[start-order="${order}"]`);
-          const orderAttr = todoItem.getAttribute("order");
-
-          return {
-            self: todoItem,
-
-            selfOrder: Number(orderAttr),
-
-            previousOrder() {
-              return this.selfOrder - 1;
-            },
-
-            nextOrder() {
-              return this.selfOrder + 1;
-            },
-
-            top() {
-              return this.self.offsetTop + this.translateVal() - window.scrollY;
-            },
-
-            bottom() {
-              return (
-                this.self.offsetTop +
-                this.translateVal() +
-                this.self.offsetHeight -
-                window.scrollY
-              );
-            },
-
-            currentPosY(e) {
-              return e.clientY - (this.self.offsetTop - window.scrollY);
-            },
-
-            currentPosX(e) {
-              return e.clientX - this.self.offsetLeft;
-            },
-
-            getStartOrder() {
-              return this.self.getAttribute("start-order");
-            },
-
-            getOrder() {
-              return this.self.getAttribute("order");
-            },
-
-            setOrder(num) {
-              this.self.setAttribute("order", num);
-            },
-
-            moveElem(posX, posY) {
-              this.self.style.transform = `translate(${posX}px, ${posY}px)`;
-              this.self.style.zIndex = "1000";
-            },
-
-            translateVal() {
-              return (
-                this.getOrder() * todoArea - this.getStartOrder() * todoArea
-              );
-            },
-
-            posByOrder() {
-              this.self.style.transform = `translate(0px, ${this.translateVal()}px)`;
-              this.self.style.zIndex = "0";
-            },
-
-            select() {
-              this.self.setAttribute("selected", "yes");
-            },
-
-            unselect() {
-              this.self.removeAttribute("selected");
-            },
-
-            incrementOrder() {
-              ++this.selfOrder;
-            },
-
-            decrementOrder() {
-              --this.selfOrder;
-            },
-
-            previous() {
-              return {
-                ...this,
-                self: document.querySelector(
-                  `[order="${this.previousOrder()}"]`
-                ),
-                previous: null,
-                next: null,
-              };
-            },
-
-            next() {
-              return {
-                ...this,
-                self: document.querySelector(`[order="${this.nextOrder()}"]`),
-                previous: null,
-                next: null,
-              };
-            },
-          };
-        };
-
-        const currentTodo = getTodo(order);
-
-        currentTodo.select();
-
-        window.onmousemove = (e) => {
-          if (!isMouseDown.value) return;
-
-          let previousTodo = currentTodo.previous();
-          let nextTodo = currentTodo.next();
-
-          const offsetBottom = currentTodo.bottom();
-
-          const posY = currentTodo.currentPosY(e) - iconMidY;
-          const posX = currentTodo.currentPosX(e) + iconMidX;
-
-          if (nextTodo.self && e.clientY > nextTodo.top()) {
-            currentTodo.incrementOrder();
-
-            nextTodo.setOrder(currentTodo.previousOrder());
-            currentTodo.setOrder(currentTodo.selfOrder);
-
-            nextTodo.posByOrder();
-          } else if (previousTodo.self && e.clientY < previousTodo.bottom()) {
-            currentTodo.decrementOrder();
-
-            previousTodo.setOrder(currentTodo.nextOrder());
-            currentTodo.setOrder(currentTodo.selfOrder);
-
-            previousTodo.posByOrder();
-          }
-
-          currentTodo.moveElem(posX, posY);
-        };
-
-        window.onmouseup = (e) => {
-          const todoItems = todoList.querySelectorAll(".todo_item");
-
-          todoItems.forEach((item) =>
-            getTodo(item.getAttribute("order")).posByOrder()
-          );
-
-          currentTodo.unselect();
-          isMouseDown.value = false;
-        };
       };
 
       const switchToInsertTab = () => {
@@ -1042,11 +1103,9 @@
                   v-for="(todo, idx) in filteredTodos()"
                   :todo="todo"
                   :key="todo.content + ', ' + idx"
-                  :order="idx"
                   @doneTodo="doneTodo"
                   @removeTodo="removeTodo(todo)"
                   @editTodo="editTodo(todo)"
-                  @moveTodo="moveTodo"
                 />
               </ul>
             </div>
@@ -1076,7 +1135,6 @@
         removeTodo,
         editTodo,
         saveTodo,
-        moveTodo,
         switchToInsertTab,
         insertData,
         getData,
@@ -1129,14 +1187,9 @@
               todo.done ? 'border-green-500' : 'border-red-500',
               todo.flag.label !== 'unflagged' ? 'after:bg-[' + todo.flag.color + ']' : ''
             ]"
-          :order="order"
-          :start-order="order"
         >
-          <div
-            class="todo_dragndrop"
-            @mousedown="$emit('moveTodo', order)"
-          >
-            <DragNDropIcon width="15" />
+          <div class="todo_dragndrop">
+            <DragNDropIcon width="18" />
           </div>
 
           <div class="todo_label" @click="$emit('doneTodo', todo)">
@@ -1645,6 +1698,7 @@
         setup: () => appConfig,
         template: appTemplate,
         beforeMount: () => initialValidation(),
+        mounted: () => onMountedConfig(),
       });
 
       app.component("LoadScreenComponent", { template: loadScreenTemplate });
@@ -2083,7 +2137,8 @@
       }
 
       .todo_dragndrop {
-        @apply absolute -left-6 text-gray-600 dark:text-gray-400 h-full grid place-items-center cursor-grab;
+        @apply absolute -left-7 text-gray-600 dark:text-gray-400 h-full grid place-items-center;
+        @apply touch-none cursor-move z-50;
       }
 
       .todo_label {
