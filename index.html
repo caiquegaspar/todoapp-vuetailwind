@@ -90,7 +90,7 @@
     />
 
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/vue@3.2.47/dist/vue.global.js"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
 
     <!-- PWA config -->
@@ -171,12 +171,13 @@
     <script>
       "use strict";
 
-      const { computed, createApp, ref } = Vue;
+      const { computed, createApp, nextTick, ref } = Vue;
 
       class TodoModel {
-        done = false;
         content = "";
+        done = false;
         flag = null;
+        order = null;
       }
 
       /**
@@ -185,50 +186,128 @@
        */
       class DraggableArea {
         itemsArea;
-        AreaPos;
         itemsList;
         itemArea;
 
+        idxsArr;
+        watcherFns;
+
+        AreaPos;
+        orderScheme;
         activeEl;
-        orderAttr;
+        callbackFn;
+        listFilter;
 
         isDragging;
+
+        /**
+         * This callback type is called `callbackFunction` and is called after list update.
+         *
+         * @callback callbackFunction
+         * @param {...*} [params] - All parameters passed to the function (zero or more parameters)
+         */
 
         /**
          * @description This class converts a HTML ul list element in a draggable list (structure based on ul > multiple li).
          * @summary Generates a draggable area.
          * @constructor
          * @author Caíque Gaspar <caiquegaspar.pages.dev>
-         * @param {string} element - The target HTML ul element identifier
-         * @param {string} [anchor] - The identifier of the specific HTML element that drags the li item
+         *
+         * @param {Object} params - The object with the draggable area parameters.
+         * @param {string} params.element - The target HTML ul element identifier.
+         * @param {string} [params.anchorEl] - The identifier of the specific HTML element that drags the li item.
+         * @param {callbackFunction} [params.callback] - A default callbackFunction called after list update (for multiple watcher functions use 'subscribe').
+         * @param {string} [params.resetAnchor] - The target HTML element to reset the list on click event.
          * @return {void}
          */
-        constructor(element, anchor) {
+        constructor({ element, anchorEl, callback, resetAnchor }) {
           this.itemsArea = document.querySelector(element);
           this.itemsList = this.itemsArea.querySelectorAll("li");
           this.itemArea = this.itemsArea.offsetHeight / this.itemsList.length;
 
-          const { left, top } = this.itemsArea.getBoundingClientRect();
-
-          this.AreaPos = { left, top };
+          this.#setGlobalConfig.setArea();
+          this.#setGlobalConfig.setOrderScheme("initial");
+          this.#setGlobalConfig.setAttrs(this.itemsList);
+          this.#setGlobalConfig.setIdxsProxy();
+          this.#setGlobalConfig.setContext();
 
           this.itemsList.forEach((item, idx) => {
-            const anchorElem = anchor ? item.querySelector(anchor) : item;
-
-            item.setAttribute("start-order", idx);
-            item.setAttribute("order", idx);
-
-            anchorElem.onpointerdown = (e) => this.dragItem(e, idx);
+            const anchorElem = anchorEl ? item.querySelector(anchorEl) : item;
+            anchorElem.onpointerdown = (e) => this.#dragItem(e, idx);
           });
 
+          if (resetAnchor)
+            document.querySelector(resetAnchor).onclick = () => this.reset();
+
+          this.callbackFn = callback;
+          this.listFilter = [];
           this.isDragging = false;
         }
 
-        setDraggableItem(item) {
+        #setGlobalConfig = {
+          setArea: () => {
+            const { left, top } = this.itemsArea.getBoundingClientRect();
+            this.AreaPos = { left, top };
+          },
+
+          setOrderScheme: (str) => {
+            const schemes = {
+              initial: ["start-order", "current-order"],
+              filter: ["filter-start", "filter-current"],
+            };
+
+            this.orderScheme = schemes[str];
+          },
+
+          setAttrs: (arr) => {
+            arr.forEach((item, idx) => {
+              item.setAttribute(this.orderScheme[0], idx);
+              item.setAttribute(this.orderScheme[1], idx);
+            });
+          },
+
+          setIdxsProxy: () => {
+            const idxsValue = Array(this.itemsList.length)
+              .fill(null)
+              .map((_, idx) => idx);
+
+            this.idxsArr = { value: idxsValue };
+            this.watcherFns = [];
+
+            const makeObservable = (target) => {
+              const self = this;
+
+              return new Proxy(target, {
+                set(target, property, value, receiver) {
+                  let success = Reflect.set(...arguments);
+
+                  if (success)
+                    self.watcherFns.forEach((handler) =>
+                      handler(value, property, target, receiver)
+                    );
+
+                  return success;
+                },
+              });
+            };
+
+            this.idxsArr = makeObservable(this.idxsArr);
+          },
+
+          setContext: () => {
+            this.filter = this.filter.bind(this);
+            this.reset = this.reset.bind(this);
+          },
+        };
+
+        #setDraggableItem(item) {
           return {
+            startOrder: this.orderScheme[0],
+            currentOrder: this.orderScheme[1],
+
             self: item,
             selfArea: this.itemArea,
-            selfOrder: Number(item.getAttribute("order")),
+            selfOrder: Number(item.getAttribute(this.orderScheme[1])),
 
             parentPos: this.AreaPos,
             posCenter: { left: null, top: null },
@@ -255,33 +334,33 @@
               return this.selfOrder + 1;
             },
 
-            currentPosY(e) {
-              const { top, translate } = this.getSelfCoodinates();
+            currentPos(e) {
+              const { left, top, translate } = this.getSelfCoodinates();
 
-              return e.clientY - top - this.posCenter.top + translate;
-            },
+              const posY = e.clientY - top - this.posCenter.top + translate;
+              const posX = e.clientX - left - this.posCenter.left;
 
-            currentPosX(e) {
-              const { left } = this.getSelfCoodinates();
-
-              return e.clientX - left - this.posCenter.left;
+              return { posY, posX };
             },
 
             getStartOrder() {
-              return this.self.getAttribute("start-order");
+              return this.self.getAttribute(this.startOrder);
             },
 
             getOrder() {
-              return this.self.getAttribute("order");
+              return this.self.getAttribute(this.currentOrder);
             },
 
             setOrder(num) {
-              this.self.setAttribute("order", num);
+              this.self.setAttribute(this.currentOrder, num);
+              return this;
             },
 
             moveElem(posX, posY) {
               this.self.style.transform = `translate(${posX}px, ${posY}px)`;
               this.self.style.zIndex = "1000";
+
+              return this;
             },
 
             posByOrder() {
@@ -289,29 +368,41 @@
 
               this.self.style.transform = `translate(0px, ${translate}px)`;
               this.self.style.zIndex = "0";
+
+              return this;
             },
 
             select() {
               this.self.setAttribute("selected", "yes");
+
+              return this;
             },
 
             unselect() {
               this.self.removeAttribute("selected");
+
+              return this;
             },
 
             incrementOrder() {
               ++this.selfOrder;
+              this.setOrder(this.selfOrder);
+
+              return this;
             },
 
             decrementOrder() {
               --this.selfOrder;
+              this.setOrder(this.selfOrder);
+
+              return this;
             },
 
             previous() {
               return {
                 ...this,
                 self: document.querySelector(
-                  `[order="${this.previousOrder()}"]`
+                  `[${this.currentOrder}="${this.previousOrder()}"]`
                 ),
                 previous: null,
                 next: null,
@@ -321,7 +412,9 @@
             next() {
               return {
                 ...this,
-                self: document.querySelector(`[order="${this.nextOrder()}"]`),
+                self: document.querySelector(
+                  `[${this.currentOrder}="${this.nextOrder()}"]`
+                ),
                 previous: null,
                 next: null,
               };
@@ -329,13 +422,12 @@
           };
         }
 
-        dragItem(e, id) {
+        #dragItem(e, id) {
           this.isDragging = true;
 
           const item = this.itemsArea.querySelector(`[start-order="${id}"]`);
 
-          this.activeEl = this.setDraggableItem(item);
-          this.orderAttr = this.activeEl.getOrder();
+          this.activeEl = this.#setDraggableItem(item);
 
           this.activeEl.posCenter = {
             left: e.clientX - this.AreaPos.left,
@@ -343,50 +435,117 @@
           };
 
           this.activeEl.select();
-          this.registerEvents();
+          this.#registerEvents();
         }
 
-        registerEvents() {
+        #registerEvents() {
           window.onpointermove = (e) => {
             if (!this.isDragging) return;
 
             let previousItem = this.activeEl.previous();
             let nextItem = this.activeEl.next();
 
-            const posY = this.activeEl.currentPosY(e);
-            const posX = this.activeEl.currentPosX(e);
+            const { posY, posX } = this.activeEl.currentPos(e);
 
-            if (nextItem.self && e.clientY > nextItem.getSelfCoodinates().top) {
-              this.activeEl.incrementOrder();
-
-              nextItem.setOrder(this.activeEl.previousOrder());
-              this.activeEl.setOrder(this.activeEl.selfOrder);
-
-              nextItem.posByOrder();
-            } else if (
+            const moveToNext =
+              nextItem.self && e.clientY > nextItem.getSelfCoodinates().top;
+            const moveToPrevious =
               previousItem.self &&
-              e.clientY < previousItem.getSelfCoodinates().bottom
-            ) {
+              e.clientY < previousItem.getSelfCoodinates().bottom;
+
+            if (moveToNext) {
+              nextItem.setOrder(this.activeEl.selfOrder).posByOrder();
+              this.activeEl.incrementOrder();
+            } else if (moveToPrevious) {
+              previousItem.setOrder(this.activeEl.selfOrder).posByOrder();
               this.activeEl.decrementOrder();
-
-              previousItem.setOrder(this.activeEl.nextOrder());
-              this.activeEl.setOrder(this.activeEl.selfOrder);
-
-              previousItem.posByOrder();
             }
 
             this.activeEl.moveElem(posX, posY);
           };
 
           window.onpointerup = () => {
+            if (!this.isDragging) return;
+
             this.activeEl.unselect();
 
             this.itemsList.forEach((item) =>
-              this.setDraggableItem(item).posByOrder()
+              this.#setDraggableItem(item).posByOrder()
             );
 
+            this.#updateList();
             this.isDragging = false;
           };
+        }
+
+        #updateList() {
+          const updatedList = [...this.itemsList].map((item) =>
+            this.#setDraggableItem(item).getOrder()
+          );
+
+          if (this.isDragging && this.callbackFn)
+            this.callbackFn.apply(this, arguments);
+
+          this.idxsArr.value = updatedList;
+        }
+
+        getList() {
+          return this.idxsArr.value;
+        }
+
+        subscribe(handler) {
+          this.watcherFns.push(handler);
+        }
+
+        filter(filter) {
+          const newFilter = filter.join() !== this.listFilter.join();
+
+          if (!newFilter) return;
+
+          this.reset();
+          this.listFilter = filter;
+
+          const filteredItems = [...this.itemsList].reduce(
+            (acc, obj, idx) => (
+              this.listFilter.includes(idx)
+                ? acc.toShow.push(obj)
+                : acc.toHide.push(obj),
+              acc
+            ),
+            { toShow: [], toHide: [] }
+          );
+
+          filteredItems.toShow.forEach(
+            (item) => (item.style.display = "block")
+          );
+          filteredItems.toHide.forEach((item) => (item.style.display = "none"));
+
+          this.#setGlobalConfig.setArea();
+          this.#setGlobalConfig.setOrderScheme("filter");
+          this.#setGlobalConfig.setAttrs(filteredItems.toShow);
+
+          filteredItems.toShow.forEach((item) =>
+            this.#setDraggableItem(item).posByOrder()
+          );
+        }
+
+        reset() {
+          this.#setGlobalConfig.setOrderScheme("initial");
+          this.listFilter = [];
+
+          [...this.itemsList]
+            .map((item) => ((item.style.display = "block"), item))
+            .forEach((item) => {
+              const draggableItem = this.#setDraggableItem(item);
+              const startOrder = draggableItem.getStartOrder();
+
+              item.removeAttribute("filter-start");
+              item.removeAttribute("filter-current");
+
+              draggableItem.setOrder(startOrder).posByOrder();
+            });
+
+          this.#setGlobalConfig.setArea();
         }
       }
 
@@ -416,6 +575,12 @@
 
       const theme = computed(() => userTheme === "dark");
       const accessData = computed(() => search === "?access-data");
+      const filteredTodos = computed(() =>
+        todosList.value.reduce(
+          (acc, obj, idx) => (filterRules(obj) && acc.push(idx), acc),
+          []
+        )
+      );
 
       const activeComponent = ref("LoadScreenComponent");
       const activeSignStep = ref("login");
@@ -432,6 +597,7 @@
       const isLoggedIn = ref(false);
       const loginLoad = ref(false);
       const token = ref(loginToken);
+      const todosArea = ref(null);
       const showOptions = ref(false);
       const showFilters = ref(false);
       const selectedFilter = ref({ label: "no filter", color: "currentColor" });
@@ -442,7 +608,7 @@
         { label: "unscheduled", color: "#dc2626" },
       ]);
       const newTodo = ref(new TodoModel());
-      const todos = ref(todosData);
+      const todosList = ref(todosData);
       const editMode = ref(false);
       const targetTodo = ref(null);
       const dataAccessTab = ref("");
@@ -517,13 +683,26 @@
         activeComponent.value = "LoginComponent";
       };
 
-      const onMountedConfig = () => {
+      const onMountedConfig = () =>
         window.scrollTo({ top: 0, behavior: "smooth" });
 
-        setTimeout(
-          () => new DraggableArea(".todo_list", ".todo_dragndrop"),
-          500
-        );
+      const onMountedMainConfig = async () => {
+        await nextTick();
+        setTimeout(() => setDraggableArea(), 500);
+      };
+
+      const setDraggableArea = () => {
+        const listClass = ".todo_list";
+        const anchorClass = ".todo_dragndrop";
+
+        if (filteredTodos.value.length)
+          todosArea.value = new DraggableArea({
+            element: listClass,
+            anchorEl: anchorClass,
+            callback: function () {
+              updateTodos(this);
+            },
+          });
       };
 
       const setTab = (str) => {
@@ -532,9 +711,6 @@
         tabName.value = str;
         tabPos.value = rules[tabName.value];
       };
-
-      const filteredTodos = () =>
-        todos.value.filter((todo) => filterRules(todo));
 
       const filterRules = (item) => {
         const tabRules = {
@@ -552,8 +728,9 @@
 
         const filterRule = filterFlags[selectedFilter.value.label];
         const tabRule = tabRules[tabName.value];
+        const rulesResult = tabRule && filterRule;
 
-        return tabRule && filterRule;
+        return rulesResult;
       };
 
       const inputEnterEvent = () => (!editMode.value ? addTodo() : saveTodo());
@@ -561,8 +738,9 @@
       const addTodo = () => {
         if (newTodo.value.content) {
           newTodo.value.flag ??= { label: "unflagged", color: "currentColor" };
+          newTodo.value.order = todosList.value.length;
 
-          todos.value.push(newTodo.value);
+          todosList.value.push(newTodo.value);
           newTodo.value = new TodoModel();
 
           saveData("added");
@@ -576,12 +754,55 @@
       );
 
       const removeTodo = (todo) => {
-        const found = todos.value.findIndex(
+        const found = todosList.value.findIndex(
           (el) => el.content === todo.content
         );
 
-        todos.value.splice(found, 1);
+        todosList.value.splice(found, 1);
         saveData("removed");
+      };
+
+      const editTodo = (todo) => {
+        const found = todosList.value.findIndex(
+          (el) => el.content === todo.content
+        );
+        const target = todosList.value.splice(found, 1)[0];
+
+        setEditProps(true, target, target);
+      };
+
+      const saveTodo = () => {
+        targetTodo.value = newTodo.value;
+
+        todosList.value.push(targetTodo.value);
+
+        saveData("saved");
+        setEditProps(false, null, new TodoModel());
+      };
+
+      const updateTodos = (context) => {
+        const moveInArr = (arr, to, from) =>
+          arr.splice(to, 0, arr.splice(from, 1)[0]);
+
+        const targetTodo = context.activeEl;
+
+        const oldPos = targetTodo.self.getAttribute("todo-order");
+        const newPos = targetTodo.getOrder();
+
+        // moveInArr(todos.value, newPos, oldPos);
+        // todos.value.map((item, idx) => ((item.order = idx), item));
+
+        // console.log({
+        //   targetTodo,
+        //   oldPos,
+        //   newPos,
+        //   todosData,
+        //   todos: todos.value,
+        //   filteredTodos: filteredTodos.value,
+        // });
+        console.log(filteredTodos.value);
+
+        saveData();
       };
 
       const setEditProps = (mode, target, val) => {
@@ -590,27 +811,14 @@
         newTodo.value = val;
       };
 
-      const editTodo = (todo) => {
-        const found = todos.value.findIndex(
-          (el) => el.content === todo.content
-        );
-        const target = todos.value.splice(found, 1)[0];
-
-        setEditProps(true, target, target);
-      };
-
-      const saveTodo = () => {
-        targetTodo.value = newTodo.value;
-        todos.value.push(targetTodo.value);
-
-        saveData("saved");
-        setEditProps(false, null, new TodoModel());
-      };
-
       const saveData = (action) => {
-        localStorage.setItem("todos", JSON.stringify(todos.value));
+        const sortedTodos = todosList.value.sort((a, b) =>
+          Intl.Collator().compare(a.order, b.order)
+        );
 
-        showToast(...notifyCases[action]);
+        localStorage.setItem("todos", JSON.stringify(sortedTodos));
+
+        if (action) showToast(...notifyCases[action]);
       };
 
       const switchToInsertTab = () => {
@@ -648,9 +856,9 @@
             .replace(/\+/g, "-")
             .replace(/\//g, "_")
             .replace(/=/g, "");
-        const encodedData = base64UrlEncode(todos.value);
+        const encodedData = base64UrlEncode(todosList.value);
 
-        dataCode.value = todos.value.length ? encodedData : "";
+        dataCode.value = todosList.value.length ? encodedData : "";
         dataAccessTab.value = "getTab";
       };
 
@@ -703,6 +911,12 @@
         }
 
         localStorage.setItem("theme", "light");
+      };
+
+      const mainWatcher = {
+        async filteredTodos(newVal, oldVal) {
+          if (newVal !== oldVal) todosArea.value.filter(filteredTodos.value);
+        },
       };
 
       const toastWatcher = {
@@ -1100,7 +1314,7 @@
             <div class="todo_container">
               <ul class="todo_list">
                 <ToDoItem
-                  v-for="(todo, idx) in filteredTodos()"
+                  v-for="(todo, idx) in todosList"
                   :todo="todo"
                   :key="todo.content + ', ' + idx"
                   @doneTodo="doneTodo"
@@ -1110,12 +1324,13 @@
               </ul>
             </div>
 
-            <h4 v-if="!todos.length" class="empty_msg">Empty list.</h4>
+            <h4 v-if="!todosList.length" class="empty_msg">Empty list.</h4>
           </template>
         </div>
       `;
 
       const mainConfig = {
+        filteredTodos,
         showOptions,
         showFilters,
         selectedFilter,
@@ -1123,12 +1338,11 @@
         dataAccessTab,
         accessData,
         newTodo,
-        todos,
+        todosList,
         editMode,
         dataCode,
         tabPos,
         setTab,
-        filteredTodos,
         inputEnterEvent,
         addTodo,
         doneTodo,
@@ -1187,24 +1401,27 @@
               todo.done ? 'border-green-500' : 'border-red-500',
               todo.flag.label !== 'unflagged' ? 'after:bg-[' + todo.flag.color + ']' : ''
             ]"
+          :todo-order="todo.order"
         >
-          <div class="todo_dragndrop">
-            <DragNDropIcon width="18" />
-          </div>
+          <div class="todo_content">
+            <div class="todo_dragndrop">
+              <DragNDropIcon width="18" />
+            </div>
 
-          <div class="todo_label" @click="$emit('doneTodo', todo)">
-            <span :class="{ 'line-through': todo.done }">
-              {{ todo.content }}
-            </span>
-          </div>
+            <div class="todo_label" @click="$emit('doneTodo', todo)">
+              <span :class="{ 'line-through': todo.done }">
+                {{ todo.content }}
+              </span>
+            </div>
 
-          <div class="todo_options">
-            <button @click="$emit('removeTodo')">
-              <DeleteIcon class="delete_icon" />
-            </button>
-            <button @click="$emit('editTodo')">
-              <EditIcon class="edit_icon" />
-            </button>
+            <div class="todo_options">
+              <button @click="$emit('removeTodo')">
+                <DeleteIcon class="delete_icon" />
+              </button>
+              <button @click="$emit('editTodo')">
+                <EditIcon class="edit_icon" />
+              </button>
+            </div>
           </div>
         </li>
       `;
@@ -1721,6 +1938,8 @@
       app.component("MainComponent", {
         setup: () => mainConfig,
         template: mainTemplate,
+        mounted: () => onMountedMainConfig(),
+        watch: mainWatcher,
       });
 
       app.component("ASelect", {
@@ -2127,13 +2346,17 @@
       }
 
       .todo_item {
-        @apply w-full bg-slate-300 dark:bg-slate-900 border-0 border-l-4 rounded-r-lg flex;
-        @apply justify-between items-center shadow-xl relative ml-1 my-2 transition-all duration-300;
-        @apply after:absolute after:-right-1 after:h-full after:w-2 after:rounded-r-lg;
+        @apply w-full bg-slate-300 dark:bg-slate-900 border-0 border-l-4 rounded-r-lg;
+        @apply shadow-xl relative ml-1 my-2 transition-all duration-300;
+        @apply after:absolute after:top-0 after:-right-1 after:h-full after:w-2 after:rounded-r-lg;
       }
 
       .todo_item[selected*="yes"] {
         @apply transition-none;
+      }
+
+      .todo_content {
+        @apply w-full flex justify-between items-center;
       }
 
       .todo_dragndrop {
