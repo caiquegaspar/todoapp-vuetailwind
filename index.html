@@ -188,14 +188,14 @@
         itemsArea;
         itemsList;
         itemArea;
+        anchorEl;
 
-        idxsArr;
+        itemsArr;
         watcherFns;
 
         AreaPos;
         orderScheme;
         activeEl;
-        callbackFn;
         listFilter;
 
         isDragging;
@@ -224,22 +224,24 @@
           this.itemsArea = document.querySelector(element);
           this.itemsList = this.itemsArea.querySelectorAll("li");
           this.itemArea = this.itemsArea.offsetHeight / this.itemsList.length;
+          this.anchorEl = anchorEl;
+
+          this.itemsArr = { value: this.getList() };
+          this.watcherFns = [];
 
           this.#setGlobalConfig.setArea();
+          this.#setGlobalConfig.setObserver();
           this.#setGlobalConfig.setOrderScheme("initial");
-          this.#setGlobalConfig.setAttrs(this.itemsList);
+          this.#setGlobalConfig.setAttrs(this.itemsArr.value);
+          this.#setGlobalConfig.setAnchor();
           this.#setGlobalConfig.setIdxsProxy();
           this.#setGlobalConfig.setContext();
 
-          this.itemsList.forEach((item, idx) => {
-            const anchorElem = anchorEl ? item.querySelector(anchorEl) : item;
-            anchorElem.onpointerdown = (e) => this.#dragItem(e, idx);
-          });
+          if (callback) this.#setGlobalConfig.setDefaultCb(callback);
 
           if (resetAnchor)
             document.querySelector(resetAnchor).onclick = () => this.reset();
 
-          this.callbackFn = callback;
           this.listFilter = [];
           this.isDragging = false;
         }
@@ -248,6 +250,11 @@
           setArea: () => {
             const { left, top } = this.itemsArea.getBoundingClientRect();
             this.AreaPos = { left, top };
+          },
+
+          setObserver: () => {
+            const observer = new MutationObserver(() => this.#updateList());
+            observer.observe(this.itemsArea, { childList: true });
           },
 
           setOrderScheme: (str) => {
@@ -260,20 +267,23 @@
           },
 
           setAttrs: (arr) => {
-            arr.forEach((item, idx) => {
-              item.setAttribute(this.orderScheme[0], idx);
-              item.setAttribute(this.orderScheme[1], idx);
+            arr.forEach(({ node }, idx) => {
+              node.setAttribute(this.orderScheme[0], idx);
+              node.setAttribute(this.orderScheme[1], idx);
+            });
+          },
+
+          setAnchor: () => {
+            this.itemsArr.value.forEach(({ node }, idx) => {
+              const anchorElem = this.anchorEl
+                ? node.querySelector(this.anchorEl)
+                : node;
+
+              anchorElem.onpointerdown = (e) => this.#dragItem(e, idx);
             });
           },
 
           setIdxsProxy: () => {
-            const idxsValue = Array(this.itemsList.length)
-              .fill(null)
-              .map((_, idx) => idx);
-
-            this.idxsArr = { value: idxsValue };
-            this.watcherFns = [];
-
             const makeObservable = (target) => {
               const self = this;
 
@@ -291,12 +301,17 @@
               });
             };
 
-            this.idxsArr = makeObservable(this.idxsArr);
+            this.itemsArr.value = this.getList();
+            this.itemsArr = makeObservable(this.itemsArr);
           },
 
           setContext: () => {
             this.filter = this.filter.bind(this);
             this.reset = this.reset.bind(this);
+          },
+
+          setDefaultCb: (callbackFn) => {
+            this.watcherFns.push((...args) => callbackFn.apply(this, args));
           },
         };
 
@@ -468,29 +483,85 @@
             if (!this.isDragging) return;
 
             this.activeEl.unselect();
+            this.#organizeList();
 
-            this.itemsList.forEach((item) =>
-              this.#setDraggableItem(item).posByOrder()
-            );
-
-            this.#updateList();
             this.isDragging = false;
           };
         }
 
-        #updateList() {
-          const updatedList = [...this.itemsList].map((item) =>
-            this.#setDraggableItem(item).getOrder()
+        #organizeList() {
+          this.itemsArr.value.forEach(({ node }) =>
+            this.#setDraggableItem(node).posByOrder()
           );
 
-          if (this.isDragging && this.callbackFn)
-            this.callbackFn.apply(this, arguments);
+          this.itemsArr.value = this.getList();
+        }
 
-          this.idxsArr.value = updatedList;
+        #updateList() {
+          this.itemsList = this.itemsArea.querySelectorAll("li");
+
+          const newItems = this.getList().reduce(
+            (acc, obj) => {
+              const { start_order, filter_start } = obj;
+              const attrsValues = Object.values({ start_order, filter_start });
+
+              attrsValues.forEach((val, idx) => {
+                if (val) acc.attrsNums[idx] = Number(val);
+              });
+
+              if (!obj.start_order) acc.items.push(obj);
+
+              return acc;
+            },
+            { items: [], attrsNums: Array(2).fill(null) }
+          );
+
+          newItems.items.forEach(({ node }) => {
+            const attrsArrs = [
+              ["start-order", "current-order"],
+              ["filter-start", "filter-current"],
+            ];
+            const { attrsNums } = newItems;
+
+            attrsArrs.forEach((attrs, idx) => {
+              if (!attrsNums[idx]) return;
+
+              ++attrsNums[idx];
+              attrs.map((attr) => node.setAttribute(attr, attrsNums[idx]));
+            });
+          });
+
+          this.itemsArr.value = this.getList();
+
+          this.#setGlobalConfig.setArea();
+          this.#setGlobalConfig.setAnchor();
         }
 
         getList() {
-          return this.idxsArr.value;
+          const globalAttrs = [
+            "start-order",
+            "current-order",
+            "filter-start",
+            "filter-current",
+          ];
+
+          const getAttrs = (el) =>
+            globalAttrs.map((item) => el.getAttribute(item));
+
+          const updatedList = [...this.itemsList].map((item) => {
+            const [startOrder, currentOrder, filterStart, filterCurrent] =
+              getAttrs(item);
+
+            return {
+              node: item,
+              start_order: startOrder,
+              current_order: currentOrder,
+              filter_start: filterStart,
+              filter_current: filterCurrent,
+            };
+          });
+
+          return updatedList;
         }
 
         subscribe(handler) {
@@ -505,7 +576,7 @@
           this.reset();
           this.listFilter = filter;
 
-          const filteredItems = [...this.itemsList].reduce(
+          const filteredItems = this.itemsArr.value.reduce(
             (acc, obj, idx) => (
               this.listFilter.includes(idx)
                 ? acc.toShow.push(obj)
@@ -516,16 +587,18 @@
           );
 
           filteredItems.toShow.forEach(
-            (item) => (item.style.display = "block")
+            ({ node }) => (node.style.display = "block")
           );
-          filteredItems.toHide.forEach((item) => (item.style.display = "none"));
+          filteredItems.toHide.forEach(
+            ({ node }) => (node.style.display = "none")
+          );
 
           this.#setGlobalConfig.setArea();
           this.#setGlobalConfig.setOrderScheme("filter");
           this.#setGlobalConfig.setAttrs(filteredItems.toShow);
 
-          filteredItems.toShow.forEach((item) =>
-            this.#setDraggableItem(item).posByOrder()
+          filteredItems.toShow.forEach(({ node }) =>
+            this.#setDraggableItem(node).posByOrder()
           );
         }
 
@@ -533,17 +606,19 @@
           this.#setGlobalConfig.setOrderScheme("initial");
           this.listFilter = [];
 
-          [...this.itemsList]
-            .map((item) => ((item.style.display = "block"), item))
-            .forEach((item) => {
-              const draggableItem = this.#setDraggableItem(item);
+          this.itemsArr.value
+            .map((item) => ((item.node.style.display = "block"), item))
+            .forEach(({ node }) => {
+              const draggableItem = this.#setDraggableItem(node);
               const startOrder = draggableItem.getStartOrder();
 
-              item.removeAttribute("filter-start");
-              item.removeAttribute("filter-current");
+              node.removeAttribute("filter-start");
+              node.removeAttribute("filter-current");
 
               draggableItem.setOrder(startOrder).posByOrder();
             });
+
+          this.itemsArr.value = this.getList();
 
           this.#setGlobalConfig.setArea();
         }
@@ -699,9 +774,7 @@
           todosArea.value = new DraggableArea({
             element: listClass,
             anchorEl: anchorClass,
-            callback: function () {
-              updateTodos(this);
-            },
+            callback: updateTodos,
           });
       };
 
@@ -780,14 +853,16 @@
         setEditProps(false, null, new TodoModel());
       };
 
-      const updateTodos = (context) => {
+      const updateTodos = (...args) => {
         const moveInArr = (arr, to, from) =>
           arr.splice(to, 0, arr.splice(from, 1)[0]);
 
-        const targetTodo = context.activeEl;
+        const [value, property, target, receiver] = args;
 
-        const oldPos = targetTodo.self.getAttribute("todo-order");
-        const newPos = targetTodo.getOrder();
+        // const targetTodo = target.activeEl;
+
+        // const oldPos = targetTodo.self.getAttribute("todo-order");
+        // const newPos = targetTodo.getOrder();
 
         // moveInArr(todos.value, newPos, oldPos);
         // todos.value.map((item, idx) => ((item.order = idx), item));
@@ -800,9 +875,13 @@
         //   todos: todos.value,
         //   filteredTodos: filteredTodos.value,
         // });
-        console.log(filteredTodos.value);
+        console.log({
+          todos: todosList.value,
+          filteredTodos: filteredTodos.value,
+          current_order: value.map((item) => item.current_order),
+        });
 
-        saveData();
+        // saveData();
       };
 
       const setEditProps = (mode, target, val) => {
@@ -914,7 +993,7 @@
       };
 
       const mainWatcher = {
-        async filteredTodos(newVal, oldVal) {
+        filteredTodos(newVal, oldVal) {
           if (newVal !== oldVal) todosArea.value.filter(filteredTodos.value);
         },
       };
@@ -1401,7 +1480,6 @@
               todo.done ? 'border-green-500' : 'border-red-500',
               todo.flag.label !== 'unflagged' ? 'after:bg-[' + todo.flag.color + ']' : ''
             ]"
-          :todo-order="todo.order"
         >
           <div class="todo_content">
             <div class="todo_dragndrop">
