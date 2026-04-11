@@ -1,0 +1,8 @@
+# ==========================================
+# ARQUIVOS DE UTILIDADE
+# ==========================================
+generate_tree.sh
+.generatetreeignore
+project_structure.txt
+project_structure.md
+.contentignore
